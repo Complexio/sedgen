@@ -12,6 +12,14 @@ sedgen.geostatistics module
    :undoc-members:
    :show-inheritance:
 
+sedgen.preprocessing module
+---------------------------
+
+.. automodule:: sedgen.preprocessing
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 
 Module contents
 ---------------
