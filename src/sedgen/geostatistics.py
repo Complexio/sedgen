@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 from scipy import stats
 
 
@@ -18,12 +17,6 @@ def alr(data):
     alr_data = np.log(data.divide(data.iloc[:, 0], axis=0))
 
     return alr_data
-
-
-def test_func(data):
-    """Bla bla bla"""
-
-    return data
 
 
 def geometrics(data):
