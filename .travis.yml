@@ -29,8 +29,5 @@ install:
 script:
   - pytest --cov-report term --cov=app/test/
 
-env:
-  - CODECOV_TOKEN=857dd6e1-ed98-4baf-87f6-ef66a8012b99
-
 after_success:
   - codecov
