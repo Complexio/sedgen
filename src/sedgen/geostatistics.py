@@ -20,6 +20,12 @@ def alr(data):
     return alr_data
 
 
+def test_func(data):
+    """Bla bla bla"""
+
+    return data
+
+
 def geometrics(data):
     """Calculate geometric mean and geometric standard deviation
 
