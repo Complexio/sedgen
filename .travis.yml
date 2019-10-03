@@ -20,11 +20,11 @@ install:
   - conda info -a
 
   # Replace dep1 dep2 ... with your dependencies
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numpy
+  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numpy pandas scipy matplotlib seaborn
   - conda activate test-environment
   - python setup.py install
 
 script:
   - pytest
-  - codecov
+  - pytest-cov
   # codecov token: 857dd6e1-ed98-4baf-87f6-ef66a8012b99
