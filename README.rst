@@ -2,7 +2,7 @@
 sedgen
 ======
 
-|docs|
+|docs| |cov|
 
 
 Add a short description here!
@@ -25,3 +25,8 @@ information on PyScaffold see https://pyscaffold.org/.
     :alt: Documentation Status
     :scale: 100%
     :target: https://sedgen.readthedocs.io/en/latest/?badge=latest
+
+.. |cov| image:: https://codecov.io/gh/Complexio/sedgen/branch/master/graph/badge.svg
+    :alt: Code Coverage
+    :scale: 100%
+    :target: https://codecov.io/gh/Complexio/sedgen
