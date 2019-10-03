@@ -5,13 +5,13 @@ sedgen
 |travis| |cov| |docs|
 
 
-Add a short description here!
+Sediment generation model.
 
 
 Description
 ===========
 
-A longer description of your project goes here...
+Sediment generation model.
 
 
 Note
