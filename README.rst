@@ -2,7 +2,7 @@
 sedgen
 ======
 
-|docs| |cov|
+|travis| |cov| |docs|
 
 
 Add a short description here!
@@ -30,3 +30,8 @@ information on PyScaffold see https://pyscaffold.org/.
     :alt: Code Coverage
     :scale: 100%
     :target: https://codecov.io/gh/Complexio/sedgen
+
+.. |travis| image:: https://travis-ci.org/Complexio/sedgen.svg?branch=master
+    :alt: Travis CI
+    :scale: 100%
+    :target: https://travis-ci.org/Complexio/sedgen
