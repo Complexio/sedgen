@@ -1,7 +1,9 @@
 language: python
+
 python:
   # We don't actually use the Travis Python, but this keeps it organized.
   - "3.7"
+
 install:
   - sudo apt-get update
   # We do this conditionally because it saves us some downloading if the
@@ -26,5 +28,7 @@ install:
 
 script:
   - pytest
-  - pytest-cov
+
+after_success:
+  - codecov
   # codecov token: 857dd6e1-ed98-4baf-87f6-ef66a8012b99
