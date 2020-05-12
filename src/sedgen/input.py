@@ -2,6 +2,7 @@ import numpy as np
 from scipy.stats import lognorm
 import itertools
 
+
 class Input():
     """Set up initial parameters of dataset
 
@@ -27,7 +28,6 @@ class Input():
         # number of polycrystalline grains (pcg)
         self.R = np.zeros((1, self.d))
 
-
     def get_interface_labels(self):
         """Returns list of combinations of interfaces between provided
         list of minerals
@@ -36,10 +36,9 @@ class Input():
 
         interface_labels = \
             ["".join(pair) for pair in
-            itertools.combinations_with_replacement(self.mineral_labels, 2)]
+             itertools.combinations_with_replacement(self.mineral_labels, 2)]
 
         return interface_labels
-
 
     def get_number_of_crystals(self):
         """Returns total number of crystals (mcg + pcg) currently
@@ -51,6 +50,17 @@ class Input():
 
         return X
 
+    def set_random_mineral_proportions(self):
+        """Create random mineral proportions
+
+        """
+
+        prng = np.random.RandomState(1234)
+
+        mineral_proportions = prng.random(self.m)
+        mineral_proportions = normalize(mineral_proportions)
+
+        return mineral_proportions
 
     def set_random_grain_size_distributions(self):
         """Create random crystal size distributions for all present
@@ -68,7 +78,6 @@ class Input():
 
         return np.array(minerals_csd)
 
-
     def set_grain_size_distributions_in_bins(self, y_phi):
         """Put created random crystal size probability distributions
         in bins
@@ -82,18 +91,18 @@ class Input():
 
         return Y
 
-
     def get_random_csd_sample(self, minerals_csd, sample_size=1000):
         """Get a random sample of specified size for all mineral classes
-        in the system according to randomly set crystam size probability
+        in the system according to randomly set crystal size probability
         distributions.
 
         """
+        y = np.zeros((self.m, self.d))
 
-        y = lambda x: x.rvs(sample_size) for minerals_csdsample_size)
+        for i, csd in enumerate(minerals_csd):
+            y[i] = csd.rvs(sample_size)
 
         return y
-
 
     def convert_to_phi_scale(self, y):
         """Calculate phi scale for random sample
@@ -103,7 +112,6 @@ class Input():
         y_phi = calc_phi(y)
 
         return y_phi
-
 
     def calc_phi(self, diam):
         """Convert diameter in mm to Phi scale.
@@ -116,3 +124,8 @@ class Input():
             phi = 99
 
         return phi
+
+
+def normalize(data):
+    normalized = data / np.sum(data)
+    return normalized
