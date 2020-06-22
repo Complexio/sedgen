@@ -1,0 +1,10 @@
+[
+  "tests/sedgen/test_geostatistics.py::TestClr::test_clr",
+  "tests/sedgen/test_geostatistics.py::TestClr::test_clr_for_zero_sum",
+  "tests/sedgen/test_geostatistics.py::TestAlr::test_alr",
+  "tests/sedgen/test_geostatistics.py::TestAlr::test_alr_for_zero_column",
+  "tests/sedgen/test_geostatistics.py::TestGeometrics::test_geo_mean",
+  "tests/sedgen/test_geostatistics.py::TestGeometrics::test_geo_std",
+  "tests/sedgen/test_input.py::TestGetInterfaceLabels::test_correct_labels",
+  "tests/sedgen/test_input.py::TestGetInterfaceLabels::test_correct_number_of_labels"
+]
