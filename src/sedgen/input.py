@@ -109,7 +109,7 @@ class Input():
 
         """
 
-        y_phi = calc_phi(y)
+        y_phi = self.calc_phi(y)
 
         return y_phi
 
