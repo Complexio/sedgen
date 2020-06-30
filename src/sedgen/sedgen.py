@@ -1,6 +1,5 @@
 import numpy as np
 import numba as nb
-import pandas as pd
 import itertools
 from scipy.stats import truncnorm
 import time
@@ -73,6 +72,7 @@ class SedGen():
                               for m in range(len(self.minerals))])
 
         self.bins = self.initialize_size_bins()
+        self.bins_medians = self.calculate_bins_medians()
 
         print("Simulating mineral occurences...", end=" ")
         if timed:
@@ -81,17 +81,21 @@ class SedGen():
             self.minerals_N, self.simulated_volume, \
             crystal_sizes_per_mineral = \
                 self.create_N_crystals(learning_rate=learning_rate)
-            print(self.modal_volume / (self.simulated_volume / 1e9))
+            # print(self.modal_volume / (self.simulated_volume / 1e9))
         else:
             self.minerals_N, self.simulated_volume = \
                 self.create_N_crystals(learning_rate=learning_rate)
+        self.N_crystals = np.sum(self.minerals_N)
+
         if timed:
             toc0 = time.perf_counter()
             print(f" Done in{toc0 - tic0: 1.4f} seconds")
         else:
             print("")
 
-        print("Initializing interfaces...")
+        print("Initializing interfaces...", end=" ")
+        if timed:
+            tic1 = time.perf_counter()
         self.interfaces = self.get_interface_labels()
         self.interfacial_composition = interfacial_composition
 
@@ -100,56 +104,62 @@ class SedGen():
         self.interface_proportions_normalized = \
             self.calculate_interface_proportions_normalized()
         self.interface_frequencies = self.calculate_interface_frequencies()
+        self.interface_frequencies = \
+            self.perform_interface_frequencies_correction()
 
         if not self.fast_calc:
-            self.transitions_per_mineral = \
+            transitions_per_mineral = \
                 self.create_transitions_per_mineral_correctly()
         else:
-            self.transitions_per_mineral = self.create_transitions()
-        # print("OK")
-        # print(type(transitions_per_mineral))
-        # self.interface_array = \
-        #     create_interface_array(self.minerals_N, transitions_per_mineral)
-        # print("OK2")
-        # self.interface_pairs = create_pairs(self.interface_array)
+            transitions_per_mineral = self.create_transitions()
 
-        # if timed:
-        #     print("Counting interfaces...", end=" ")
-        #     tic1 = time.perf_counter()
-        # else:
-        #     print("Counting interfaces...")
-        # self.interface_counts = self.count_interfaces()
-        # self.interface_counts_matrix = \
-        #     self.convert_counted_interfaces_to_matrix()
-        # if timed:
-        #     toc1 = time.perf_counter()
-        #     print(f"Done in{toc1 - tic1: 1.4f} seconds")
+        self.interface_array = \
+            create_interface_array(self.minerals_N, transitions_per_mineral)
+        self.interface_pairs = create_pairs(self.interface_array)
+        if timed:
+            toc1 = time.perf_counter()
+            print(f" Done in{toc1 - tic1: 1.4f} seconds")
+        else:
+            print("")
 
-        # if timed:
-        #     print("Initializing crystal size array...", end=" ")
-        #     tic2 = time.perf_counter()
-        # else:
-        #     print("Initializing crystal size array...")
-        # self.minerals_N_actual = self.calculate_actual_minerals_N()
-        # if self.fast_calc:
-        #     crystal_sizes_per_mineral = \
-        #         self.create_binned_crystal_size_arrays()
-        # # print(self.interface_array.shape)
-        # # print(self.minerals_N)
-        # # print(np.sum(self.minerals_N))
-        # # print([np.sum(self.interface_array == x) for x in range(6)])
-        # # print([x.shape[0] for x in crystal_sizes_per_mineral])
-        # # print(self.minerals_N_actual)
-        # self.crystal_size_array = \
-        #     self.fill_main_cystal_size_array(crystal_sizes_per_mineral)
-        # if timed:
-        #     toc2 = time.perf_counter()
-        #     print(f"Done in{toc2 - tic2: 1.4f} seconds")
+        if timed:
+            print("Counting interfaces...", end=" ")
+            tic2 = time.perf_counter()
+        else:
+            print("Counting interfaces...")
+        self.interface_counts = self.count_interfaces()
+        self.interface_counts_matrix = \
+            self.convert_counted_interfaces_to_matrix()
+        if timed:
+            toc2 = time.perf_counter()
+            print(f" Done in{toc2 - tic2: 1.4f} seconds")
 
-        # print("Initializing inter-crystal breakage probability arrays...")
-        # self.interface_location_prob = self.create_interface_location_prob()
-        # self.interface_strengths_prob = self.get_interface_stregths_prob()
-        # self.interface_size_prob = self.get_interface_size_prob()
+        print("Correcting interface arrays for consistency...")
+        if not self.fast_calc:
+            self.interface_array, self.interface_frequencies_corr = \
+                self.perform_double_interface_array_correction()
+            self.interface_pairs = create_pairs(self.interface_array)
+
+        print("Initializing crystal size array...", end=" ")
+        if timed:
+            tic3 = time.perf_counter()
+        self.minerals_N_actual = self.calculate_actual_minerals_N()
+        if self.fast_calc:
+            crystal_sizes_per_mineral = \
+                self.create_binned_crystal_size_arrays()
+
+        self.crystal_size_array = \
+            self.fill_main_cystal_size_array(crystal_sizes_per_mineral)
+        if timed:
+            toc3 = time.perf_counter()
+            print(f" Done in{toc3 - tic3: 1.4f} seconds")
+        else:
+            print("")
+
+        print("Initializing inter-crystal breakage probability arrays...")
+        self.interface_location_prob = self.create_interface_location_prob()
+        self.interface_strengths_prob = self.get_interface_stregths_prob()
+        self.interface_size_prob = self.get_interface_size_prob()
 
         print("\n---SedGen model initialization finished succesfully---")
 
@@ -209,17 +219,13 @@ class SedGen():
             total_volume_mineral += \
                 np.sum(calculate_volume_sphere(crystals_to_add,
                                                diameter=True))
-
             rs += 1
+
         if not self.fast_calc:
             crystals_array = np.concatenate(crystals)
             crystals_binned = \
-                np.array(
-                    pd.cut(crystals_array,
-                           bins=self.bins,
-                           labels=range(len(self.bins)-1),
-                           right=False),
-                    dtype=np.uint16)
+                (np.digitize(crystals_array,
+                             bins=self.bins) - 1).astype(np.uint16)
 
             return crystals_total, np.sum(crystals_total), \
                 total_volume_mineral, crystals_binned
@@ -255,7 +261,7 @@ class SedGen():
 
     def calculate_interface_frequencies(self):
         interface_frequencies = \
-            np.round(self.interface_proportions * (self.minerals_N - 1)).astype(np.uint32)
+            np.round(self.interface_proportions * (self.N_crystals - 1)).astype(np.uint32)
         return interface_frequencies
 
     def calculate_interface_proportions_normalized(self):
@@ -272,7 +278,9 @@ class SedGen():
 
         transitions_per_mineral = []
 
+        print("|", end="")
         for i, mineral in enumerate(self.minerals):
+            print(mineral, end="|")
             transitions_per_mineral.append(
                 prng.choice(possibilities,
                             size=self.minerals_N[i]+20000,
@@ -280,24 +288,127 @@ class SedGen():
 
         return tuple(transitions_per_mineral)
 
-
-    def create_transitions_per_mineral_correctly(self):
+    def create_transitions_per_mineral_correctly(self, corr=5):
+        """Correction 'corr' is implemented to obtain a bit more possibilities than needed to make sure there are enough values to fill the interface array"""
         transitions_per_mineral = []
 
         if not self.fast_calc:
             iterable = self.interface_frequencies.copy()
         else:
             iterable = self.interface_proportions_normalized.copy()
-        # print(iterable.shape)
 
+        print("|", end="")
         for i, row in enumerate(iterable):
+            print(self.minerals[i], end="|")
             # print(self.minerals_N)
-            N = self.minerals_N[i].copy()
+            N = self.minerals_N[i].copy() + corr
             c = np.random.random(size=N)
             transitions_per_mineral.append(
                 create_transitions_correctly(row, c, N))
 
         return tuple(transitions_per_mineral)
+
+    def perform_interface_frequencies_correction(self):
+        interface_frequencies_corr = self.interface_frequencies.copy()
+        diff = np.sum(self.interface_frequencies) - (self.N_crystals - 1)
+        # print(diff)
+        interface_frequencies_corr[0, 0] -= int(diff)
+        return interface_frequencies_corr
+
+    def perform_interface_array_correction(self):
+        """Remove or add crystals from/to interface_array where
+        necessary
+        """
+        interface_array_corr = self.interface_array.copy()
+        diff = [np.sum(self.interface_array == x) for x in range(6)] - self.minerals_N
+
+        for index, item in enumerate(diff):
+            if item > 0:
+                interface_array_corr = \
+                    np.delete(interface_array_corr,
+                              np.where(interface_array_corr == index)
+                              [0][-item:])
+            elif item < 0:
+                interface_array_corr = np.append(interface_array_corr,
+                                                 [index] * -item)
+            else:
+                pass
+
+        return interface_array_corr
+
+    def perform_double_interface_array_correction(self):
+        """Remove or add crystals from/to interface_array where
+        necessary
+        """
+        interface_array_corr = self.interface_array.copy()
+        prob_unit = 1
+        # interface_pairs_corr = self.interface_pairs.copy()
+        interface_frequencies_corr = self.interface_counts_matrix.copy()
+        diff = [np.sum(self.interface_array == x) for x in range(6)] - self.minerals_N
+        # print("diff", diff)
+        # print(interface_frequencies_corr)
+
+        for index, item in enumerate(diff):
+            if item > 0:
+                # print("too much", self.minerals[index], item)
+                # Select exceeding number crystals from end of array
+                for i in range(item):
+                    # Select index to correct
+                    corr_index = np.where(interface_array_corr == index)[0][-1]
+
+                    # Add/remove interfaces to/from interface_frequencies_corr
+                    try:
+                        # Remove first old interface
+                        pair_index = (interface_array_corr[corr_index-1],
+                                      interface_array_corr[corr_index])
+                        # print("old1", pair_index)
+                        interface_frequencies_corr[pair_index] -= prob_unit
+                        # Add newly formed interface
+                        pair_index = (interface_array_corr[corr_index-1],
+                                      interface_array_corr[corr_index+1])
+                        # print("new", pair_index)
+                        interface_frequencies_corr[pair_index] += prob_unit
+                        # Remove second old interface
+                        pair_index = (interface_array_corr[corr_index],
+                                      interface_array_corr[corr_index+1])
+                        # print("old2", pair_index)
+                        interface_frequencies_corr[pair_index] -= prob_unit
+
+                    except IndexError:
+                        # print("interface removed from end of array")
+                        pass
+                        # IndexError might occur if correction takes place at
+                        # very end of interface_array, as there is only one
+                        # interface present there. Therefore, only the first
+                        # old interface needs to be removed. Checking if we are
+                        # at the start of the array should not be necessary as # we always select corr_indices from the end of the
+                        # interfac_array.
+
+                    # Delete crystals from interface_array_corr
+                    interface_array_corr = \
+                        np.delete(interface_array_corr, corr_index)
+
+                    # print(interface_array_corr[-100:])
+                    # print(interface_frequencies_corr)
+
+            elif item < 0:
+                # print("too few", self.minerals[index], item)
+                # Add newly formed interfaces to interface_frequencies_corr
+                pair_index = (interface_array_corr[-1], index)
+                interface_frequencies_corr[pair_index] += prob_unit
+                # Add crystals to interface_array_corr
+                interface_array_corr = np.append(interface_array_corr,
+                                                 [index] * -item)
+                # Add newly formed isomineral interfaces
+                interface_frequencies_corr[index, index] += (-item - 1) * prob_unit
+                # print(pair_index)
+                # print(interface_array_corr[-100:])
+                # print(interface_frequencies_corr)
+            else:
+                # print("all good", self.minerals[index], item)
+                pass
+
+        return interface_array_corr, interface_frequencies_corr
 
     def count_interfaces(self):
         """Count number frequencies of crystal interfaces
@@ -365,15 +476,11 @@ class SedGen():
 
         for i, mineral in enumerate(self.minerals):
             crystal_size_random.append(
-                np.array(
-                    pd.cut(
+                    (np.digitize(
                         np.exp(
                             self.csds[i].rvs(self.minerals_N_actual[i],
                                              random_state=random_seed)),
-                        bins=self.bins,
-                        labels=range(len(self.bins)-1),
-                        right=False),
-                    dtype=np.uint16))
+                        bins=self.bins) - 1).astype(np.uint16))
 
         return crystal_size_random
 
@@ -387,11 +494,28 @@ class SedGen():
 
         # Much faster way (6s) to create crystal size labels array than
         # to use modified function of interfaces array creating (1m40s)!
-        for i in range(len(self.minerals)):
-            crystal_size_array[np.where(self.interface_array == i)[0]] = \
+        print("|", end="")
+        for i, mineral in enumerate(self.minerals):
+            print(mineral, end="|")
+            crystal_size_array[np.where(self.interface_array == i)] = \
                 crystal_sizes_per_mineral[i]
 
         return crystal_size_array
+
+    def calculate_actual_volumes(self):
+        """Calculates the actual volume / modal mineralogy taken up by
+        the crystal size array per mineral"""
+        actual_volumes = []
+
+        for m in range(len(self.minerals)):
+            # Get cystal size (binned) for mineral
+            crystal_sizes = self.crystal_size_array[self.interface_array == m]
+            # Convert bin labels to bin medians
+            crystal_sizes_array = np.array([self.bins_medians[cs] for cs in crystal_sizes])
+            # Calculate sum of volume of crystal sizes and store result
+            actual_volumes.append(np.sum(calculate_volume_sphere(crystal_sizes_array, diameter=True)) / self.parent_rock_volume)
+
+        return actual_volumes
 
     def get_interface_size_prob(self):
         interface_size_prob = np.min(create_pairs(self.crystal_size_array))
@@ -449,16 +573,21 @@ def create_transitions_correctly(row, c, N_initial):
 
     # Absolute transition probabilities
     probs = row.copy()
-    probs_norm = np.divide(probs, N_initial)
+    # print(probs)
     # Number of transitions to obtain
     N = int(N_initial)
+    # print(N)
+    # Subtract correction
+    # N_initial -= corr
+    # Normalize probabilities
+    probs_norm = np.divide(probs, np.sum(probs))
     # Initalize transition array
     transitions = np.zeros(shape=N, dtype=np.uint8)
 
     # For every transition
     for i in range(N):
         # Create normalized probabilities
-#         probs_norm = np.divide(probs, np.sum(probs))
+        # probs_norm = np.divide(probs, N_initial)
 
         probs_norm /= np.sum(probs_norm)
 
@@ -477,7 +606,8 @@ def create_transitions_correctly(row, c, N_initial):
         # proportions. Similar to a 'replace=False' in random sampling.
         probs_norm[choice] -= 1 / N_initial
         N_initial -= 1
-
+    # print(probs_norm)
+    # print(N_initial)
     return transitions
 
 
@@ -491,7 +621,7 @@ def create_interface_array(minerals_N, transitions_per_mineral):
     # The time loss of working with a numpy array from the start is
     # around 10 s compared to the list implementation.
     test_array = np.zeros(int(np.sum(minerals_N)), dtype=np.uint8)
-    print(test_array.shape)
+
 #     test_array = [0]
 #     append_ = test_array.append
     counters = np.array([0] * len(minerals_N), dtype=np.uint32)
