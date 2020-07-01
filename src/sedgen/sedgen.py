@@ -136,7 +136,7 @@ class SedGen():
 
         print("Correcting interface arrays for consistency...")
         if not self.fast_calc:
-            self.interface_array, self.interface_frequencies_corr = \
+            self.interface_array, self.interface_counts_matrix = \
                 self.perform_double_interface_array_correction()
             self.interface_pairs = create_pairs(self.interface_array)
 
@@ -226,6 +226,11 @@ class SedGen():
             crystals_binned = \
                 (np.digitize(crystals_array,
                              bins=self.bins) - 1).astype(np.uint16)
+            # Capture and correct crystals that fall outside
+            # the leftmost bin as they end up as bin 0 but since 1 gets
+            # subtracted from all bins they end up as the highest value
+            # of np.uint16 as negative values are note possible
+            crystals_binned[crystals_binned > len(self.bins)] = 0
 
             return crystals_total, np.sum(crystals_total), \
                 total_volume_mineral, crystals_binned
@@ -350,7 +355,7 @@ class SedGen():
 
         for index, item in enumerate(diff):
             if item > 0:
-                # print("too much", self.minerals[index], item)
+                print("too much", self.minerals[index], item)
                 # Select exceeding number crystals from end of array
                 for i in range(item):
                     # Select index to correct
@@ -392,7 +397,7 @@ class SedGen():
                     # print(interface_frequencies_corr)
 
             elif item < 0:
-                # print("too few", self.minerals[index], item)
+                print("too few", self.minerals[index], item)
                 # Add newly formed interfaces to interface_frequencies_corr
                 pair_index = (interface_array_corr[-1], index)
                 interface_frequencies_corr[pair_index] += prob_unit
@@ -405,7 +410,7 @@ class SedGen():
                 # print(interface_array_corr[-100:])
                 # print(interface_frequencies_corr)
             else:
-                # print("all good", self.minerals[index], item)
+                print("all good", self.minerals[index], item)
                 pass
 
         return interface_array_corr, interface_frequencies_corr
@@ -526,6 +531,15 @@ class SedGen():
 
         return interface_size_prob
 
+    def check_properties(self):
+        # Check that number of crystals per mineral in interface array equals
+        # the samen number in minerals_N
+        assert all([np.sum(self.interface_array == x) for x in range(6)] - \
+            self.minerals_N == [0] * len(self.minerals)), "N is not the same in interface_array and minerals_N"
+        # Check that
+        # assert self.
+        return "all good"
+
 
 @nb.njit
 def calculate_volume_sphere(r, diameter=False):
@@ -572,7 +586,7 @@ def create_transitions_correctly(row, c, N_initial):
     """
 
     # Absolute transition probabilities
-    probs = row.copy()
+    probs = row.copy().astype(np.int32)
     # print(probs)
     # Number of transitions to obtain
     N = int(N_initial)
@@ -580,23 +594,28 @@ def create_transitions_correctly(row, c, N_initial):
     # Subtract correction
     # N_initial -= corr
     # Normalize probabilities
-    probs_norm = np.divide(probs, np.sum(probs))
+    N_true = np.sum(probs)
+    # probs_norm = np.divide(probs, N_true)
+    # print(np.sum(probs), N_initial)
+
+    # probs_norm_sum = 1.0
+    # print(probs_norm_sum)
     # Initalize transition array
     transitions = np.zeros(shape=N, dtype=np.uint8)
 
     # For every transition
     for i in range(N):
         # Create normalized probabilities
-        # probs_norm = np.divide(probs, N_initial)
+        # probs_norm = probs / N_initial
 
-        probs_norm /= np.sum(probs_norm)
+        # probs_norm /= probs_norm_sum
 
         # Create cummulative probability distribution
-        prob_norm_cumsum = np.cumsum(probs_norm)
+        # prob_norm_cumsum = np.cumsum(probs_norm)
 
         # Check were the random probability falls within the cumulative
         # probability distribution and select corresponding mineral
-        choice = (c[i] < prob_norm_cumsum).argmax()
+        choice = (c[i] < np.cumsum(probs / N_true)).argmax()
 
         # Assign corresponding mineral to transition array
         transitions[i] = choice
@@ -604,10 +623,12 @@ def create_transitions_correctly(row, c, N_initial):
         # Remove one count of the transition probability array since we want to
         # have the exact number of absolute transitions based on the interface
         # proportions. Similar to a 'replace=False' in random sampling.
-        probs_norm[choice] -= 1 / N_initial
-        N_initial -= 1
-    # print(probs_norm)
-    # print(N_initial)
+        probs[choice] -= 1
+        # probs_norm_sum = 1 - (1 / N_initial)
+        N_true -= 1
+    # print(probs)
+    # print(N_true)
+    # print(probs_norm_sum)
     return transitions
 
 
