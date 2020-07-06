@@ -49,7 +49,7 @@ class SedGen():
 
     def __init__(self, minerals, parent_rock_volume, modal_mineralogy,
                  csd_means, csd_stds, interfacial_composition=None,
-                 learning_rate=1000, timed=False, fast_calc=True):
+                 learning_rate=1000, timed=False, fast_calc=True, binned=True):
         print("---SedGen model initialization started---\n")
 
         print("Initializing modal mineralogy...")
@@ -57,6 +57,7 @@ class SedGen():
         self.parent_rock_volume = parent_rock_volume
         self.modal_mineralogy = modal_mineralogy
         self.fast_calc = fast_calc
+        self.binned = binned
 
         # Assert that modal mineralogy proportions sum up to unity.
         assert np.isclose(np.sum(modal_mineralogy), 1.0), \
@@ -70,9 +71,9 @@ class SedGen():
 
         self.csds = np.array([self.initialize_csd(m)
                               for m in range(len(self.minerals))])
-
-        self.bins = self.initialize_size_bins()
-        self.bins_medians = self.calculate_bins_medians()
+        if self.binned:
+            self.bins = self.initialize_size_bins()
+            self.bins_medians = self.calculate_bins_medians()
 
         print("Simulating mineral occurences...", end=" ")
         if timed:
@@ -146,7 +147,7 @@ class SedGen():
         self.minerals_N_actual = self.calculate_actual_minerals_N()
         if self.fast_calc:
             crystal_sizes_per_mineral = \
-                self.create_binned_crystal_size_arrays()
+                self.create_crystal_size_arrays()
 
         self.crystal_size_array = \
             self.fill_main_cystal_size_array(crystal_sizes_per_mineral)
@@ -191,8 +192,8 @@ class SedGen():
         return bins
 
     def calculate_bins_medians(self):
-        bins_medians = [(self.bins[i] + self.bins[i+1]) / 2
-                        for i in range(len(self.bins) - 1)]
+        bins_medians = np.array([(self.bins[i] + self.bins[i+1]) / 2
+                        for i in range(len(self.bins) - 1)])
         return bins_medians
 
     def calculate_N_crystals(self, m, learning_rate=1000):
@@ -223,17 +224,22 @@ class SedGen():
 
         if not self.fast_calc:
             crystals_array = np.concatenate(crystals)
-            crystals_binned = \
-                (np.digitize(crystals_array,
-                             bins=self.bins) - 1).astype(np.uint16)
-            # Capture and correct crystals that fall outside
-            # the leftmost bin as they end up as bin 0 but since 1 gets
-            # subtracted from all bins they end up as the highest value
-            # of np.uint16 as negative values are note possible
-            crystals_binned[crystals_binned > len(self.bins)] = 0
 
-            return crystals_total, np.sum(crystals_total), \
-                total_volume_mineral, crystals_binned
+            if self.binned:
+                crystals_binned = \
+                    (np.digitize(crystals_array,
+                                 bins=self.bins) - 1).astype(np.uint16)
+                # Capture and correct crystals that fall outside
+                # the leftmost bin as they end up as bin 0 but since 1 gets
+                # subtracted from all bins they end up as the highest value
+                # of np.uint16 as negative values are note possible
+                crystals_binned[crystals_binned > len(self.bins)] = 0
+
+                return crystals_total, np.sum(crystals_total), \
+                    total_volume_mineral, crystals_binned
+            else:
+                return crystals_total, np.sum(crystals_total), \
+                    total_volume_mineral, crystals_array
         else:
             return crystals_total, np.sum(crystals_total), \
                 total_volume_mineral
@@ -476,16 +482,21 @@ class SedGen():
                                    for i in range(len(self.minerals))]
         return minerals_N_total_actual
 
-    def create_binned_crystal_size_arrays(self, random_seed=434):
+    def create_crystal_size_arrays(self, random_seed=434):
         crystal_size_random = []
 
         for i, mineral in enumerate(self.minerals):
-            crystal_size_random.append(
+            if self.binned:
+                crystals = \
                     (np.digitize(
                         np.exp(
                             self.csds[i].rvs(self.minerals_N_actual[i],
                                              random_state=random_seed)),
-                        bins=self.bins) - 1).astype(np.uint16))
+                        bins=self.bins) - 1).astype(np.uint16)
+            else:
+                crystals = np.exp(self.csds[i].rvs(self.minerals_N_actual[i],
+                                                   random_state=random_seed))
+            crystal_size_random.append(crystals)
 
         return crystal_size_random
 
@@ -494,8 +505,12 @@ class SedGen():
         performed, the sizes are allocated according to the mineral
         order in the minerals/interfaces array
         """
-        crystal_size_array = np.zeros(self.interface_array.shape,
-                                      dtype=np.uint16)
+        if self.binned:
+            crystal_size_array = np.zeros(self.interface_array.shape,
+                                          dtype=np.uint16)
+        else:
+            crystal_size_array = np.zeros(self.interface_array.shape,
+                                          dtype=np.float64)
 
         # Much faster way (6s) to create crystal size labels array than
         # to use modified function of interfaces array creating (1m40s)!
@@ -516,7 +531,10 @@ class SedGen():
             # Get cystal size (binned) for mineral
             crystal_sizes = self.crystal_size_array[self.interface_array == m]
             # Convert bin labels to bin medians
-            crystal_sizes_array = np.array([self.bins_medians[cs] for cs in crystal_sizes])
+            if self.binned:
+                crystal_sizes_array = self.bins_medians[crystal_sizes]
+            else:
+                crystal_sizes_array = crystal_sizes
             # Calculate sum of volume of crystal sizes and store result
             actual_volumes.append(np.sum(calculate_volume_sphere(crystal_sizes_array, diameter=True)) / self.parent_rock_volume)
 
@@ -542,7 +560,7 @@ class SedGen():
 
 
 @nb.njit
-def calculate_volume_sphere(r, diameter=False):
+def calculate_volume_sphere(r, diameter=True):
     """Calculates volume of a sphere
     Numba speeds up this function by 2x
     """
