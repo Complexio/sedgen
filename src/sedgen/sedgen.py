@@ -74,6 +74,8 @@ class SedGen():
         if self.binned:
             self.bins = self.initialize_size_bins()
             self.bins_medians = self.calculate_bins_medians()
+            self.bins_medians_volumes = self.calculate_bins_medians_volumes()
+            self.n_bins = len(self.bins)
 
         print("Simulating mineral occurences...", end=" ")
         if timed:
@@ -176,7 +178,7 @@ class SedGen():
 
         return interface_labels
 
-    def initialize_csd(self, m, trunc_left=-np.inf, trunc_right=30):
+    def initialize_csd(self, m, trunc_left=1/256, trunc_right=30):
         mean = np.log(self.csd_means[m])
         std = np.exp(self.csd_stds[m])
         if np.isinf(trunc_left):
@@ -187,14 +189,17 @@ class SedGen():
         a, b = (trunc_left - mean) / std, (trunc_right - mean) / std
         return truncnorm(loc=mean, scale=std, a=a, b=b)
 
-    def initialize_size_bins(self, lower=-17.5, upper=5, n_bins=1500):
+    def initialize_size_bins(self, lower=-10, upper=5, n_bins=1500):
         bins = [2.0**x for x in np.linspace(lower, upper, n_bins+1)]
-        return bins
+        return np.array(bins)
 
     def calculate_bins_medians(self):
         bins_medians = np.array([(self.bins[i] + self.bins[i+1]) / 2
                         for i in range(len(self.bins) - 1)])
         return bins_medians
+
+    def calculate_bins_medians_volumes(self):
+        return calculate_volume_sphere(self.bins_medians)
 
     def calculate_N_crystals(self, m, learning_rate=1000):
         total_volume_mineral = 0
