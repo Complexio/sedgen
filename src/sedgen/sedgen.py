@@ -313,7 +313,7 @@ class SedGen():
     def create_transitions(self, random_seed=525):
         possibilities = np.arange(len(self.minerals), dtype=np.uint8)
 
-        prng = np.random.RandomState(random_seed)
+        prng = np.random.default_rng(random_seed)
 
         transitions_per_mineral = []
 
@@ -342,7 +342,7 @@ class SedGen():
             print(self.minerals[i], end="|")
             # print(self.minerals_N)
             N = self.minerals_N[i].copy() + corr
-            prng = np.random.RandomState(random_seed)
+            prng = np.random.default_rng(random_seed)
             c = prng.random(size=N)
             transitions_per_mineral.append(
                 create_transitions_correctly(row, c, N))
@@ -597,7 +597,7 @@ class SedGen():
         return "all good"
 
 
-@nb.njit
+@nb.njit(cache=True, nogil=True)
 def calculate_volume_sphere(r, diameter=True):
     """Calculates volume of a sphere
     Numba speeds up this function by 2x
@@ -609,7 +609,7 @@ def calculate_volume_sphere(r, diameter=True):
     return volume
 
 
-@nb.njit
+@nb.njit(cache=True, nogil=True)
 def calculate_equivalent_circular_diameter(volume):
     diameter = 2 * (3/4 * volume / np.pi) ** (1/3)
 
@@ -634,7 +634,7 @@ def create_pairs(data):
                       data[1:]))[0]
 
 
-@nb.jit(nopython=True)
+@nb.njit(cache=True)
 def create_transitions_correctly(row, c, N_initial):
     """https://stackoverflow.com/questions/40474436/how-to-apply-numpy-random-choice-to-a-matrix-of-probability-values-vectorized-s
 
@@ -688,7 +688,7 @@ def create_transitions_correctly(row, c, N_initial):
     return transitions
 
 
-@nb.jit(nopython=True)
+@nb.njit(cache=True)
 def create_interface_array(minerals_N, transitions_per_mineral):
 
     # It's faster to work with list here and convert it to array
