@@ -616,9 +616,36 @@ def calculate_equivalent_circular_diameter(volume):
     return diameter
 
 
+def calculate_number_proportions_pcg(pcg_array):
+    try:
+        pcg_array = np.concatenate(pcg_array)
+    except ValueError as error:
+        pass
+    crystals_count = np.bincount(pcg_array)
+    print(crystals_count)
+    return crystals_count / np.sum(crystals_count)
+
+
+def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes):
+    try:
+        pcg_array = np.concatenate(pcg_array)
+        csize_array = np.concatenate(csize_array)
+    except:
+        pass
+    volumes = bins_volumes[csize_array]
+    volume_counts = weighted_bin_count(pcg_array, volumes)
+
+    return normalize(volume_counts)
+
+
+@nb.njit(cache=True)
+def weighted_bin_count(a, w):
+    return np.bincount(a, weights=w)
+
+
+@nb.njit(cache=True)
 def normalize(data):
-    normalized = data / np.sum(data)
-    return normalized
+    return data / np.sum(data)
 
 
 def slow_count(data):
