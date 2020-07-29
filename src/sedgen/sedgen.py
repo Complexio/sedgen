@@ -63,7 +63,7 @@ class SedGen():
 
         # Assert that modal mineralogy proportions sum up to unity.
         assert np.isclose(np.sum(modal_mineralogy), 1.0), \
-        "Modal mineralogy proportions do not sum to 1"
+            "Modal mineralogy proportions do not sum to 1"
 
         self.modal_volume = self.parent_rock_volume * self.modal_mineralogy
 
@@ -201,7 +201,7 @@ class SedGen():
 
     def calculate_bins_medians(self, bins):
         bins_medians = np.array([(bins[i] + bins[i+1]) / 2
-                        for i in range(len(bins) - 1)])
+                                 for i in range(len(bins) - 1)])
         return bins_medians
 
     # def calculate_bins_medians_volumes(self):
@@ -247,8 +247,8 @@ class SedGen():
             if self.binned:
                 if self.volume_binned:
                     crystals_binned = \
-                        (np.digitize(crystals_array,
-                                     bins=self.volume_bins) - 1).astype(np.uint16)
+                        (np.searchsorted(self.volume_bins,
+                                         crystals_array) - 1).astype(np.uint16)
 
                 # Capture and correct crystals that fall outside
                 # the leftmost bin as they end up as bin 0 but since 1 gets
@@ -257,13 +257,13 @@ class SedGen():
 
                 else:
                     crystals_binned = \
-                        (np.digitize(crystals_array,
-                                     bins=self.size_bins) - 1).astype(np.uint16)
+                        (np.searchsorted(self.size_bins,
+                                         crystals_array) - 1).astype(np.uint16)
 
                 crystals_binned[crystals_binned > self.n_bins] = 0
 
                 return crystals_total, np.sum(crystals_total), \
-                        total_volume_mineral, crystals_binned
+                    total_volume_mineral, crystals_binned
 
             else:
                 return crystals_total, np.sum(crystals_total), \
@@ -282,7 +282,7 @@ class SedGen():
         minerals_N_total = np.array([N[1] for N in minerals_N.values()])
         simulated_volume = np.array([N[2] for N in minerals_N.values()])
         if not self.fast_calc:
-            crystals = np.array([N[3] for N in minerals_N.values()])
+            crystals = [N[3] for N in minerals_N.values()]
 
             return minerals_N_total, simulated_volume, crystals
         else:
@@ -329,7 +329,9 @@ class SedGen():
 
     def create_transitions_per_mineral_correctly(self, corr=5,
                                                  random_seed=911):
-        """Correction 'corr' is implemented to obtain a bit more possibilities than needed to make sure there are enough values to fill the interface array"""
+        """Correction 'corr' is implemented to obtain a bit more
+        possibilities than needed to make sure there are enough values
+        to fill the interface array"""
         transitions_per_mineral = []
 
         if not self.fast_calc:
@@ -385,7 +387,8 @@ class SedGen():
         prob_unit = 1
         # interface_pairs_corr = self.interface_pairs.copy()
         interface_frequencies_corr = self.interface_counts_matrix.copy()
-        diff = [np.sum(self.interface_array == x) for x in range(6)] - self.minerals_N
+        diff = [np.sum(self.interface_array == x) for x in range(6)] \
+            - self.minerals_N
         # print("diff", diff)
         # print(interface_frequencies_corr)
 
@@ -517,20 +520,20 @@ class SedGen():
 
         for i, mineral in enumerate(self.minerals):
             if self.binned:
-                if volume_binned:
+                if self.volume_binned:
                     crystals = \
-                        (np.digitize(
+                        (np.searchsorted(self.size_bins,
                             np.exp(
                                 self.csds[i].rvs(self.minerals_N_actual[i],
-                                                 random_state=random_seed)),
-                            bins=self.volume_bins) - 1).astype(np.uint16)
+                                                 random_state=random_seed))
+                            ) - 1).astype(np.uint16)
                 else:
                     crystals = \
-                        (np.digitize(
+                        (np.searchsorted(self.size_bins,
                             np.exp(
                                 self.csds[i].rvs(self.minerals_N_actual[i],
                                                  random_state=random_seed)),
-                            bins=self.size_bins) - 1).astype(np.uint16)
+                            ) - 1).astype(np.uint16)
             else:
                 crystals = np.exp(self.csds[i].rvs(self.minerals_N_actual[i],
                                                    random_state=random_seed))
@@ -590,8 +593,8 @@ class SedGen():
     def check_properties(self):
         # Check that number of crystals per mineral in interface array equals
         # the samen number in minerals_N
-        assert all([np.sum(self.interface_array == x) for x in range(6)] - \
-            self.minerals_N == [0] * len(self.minerals)), "N is not the same in interface_array and minerals_N"
+        assert all([np.sum(self.interface_array == x) for x in range(6)] -
+                   self.minerals_N == [0] * len(self.minerals)), "N is not the same in interface_array and minerals_N"
         # Check that
         # assert self.
         return "all good"
@@ -619,23 +622,24 @@ def calculate_equivalent_circular_diameter(volume):
 def calculate_number_proportions_pcg(pcg_array):
     try:
         pcg_array = np.concatenate(pcg_array)
-    except ValueError as error:
+    except ValueError:
         pass
     crystals_count = np.bincount(pcg_array)
     print(crystals_count)
     return crystals_count / np.sum(crystals_count)
 
 
-def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes):
+def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes,
+                                   return_volumes=True):
     try:
         pcg_array = np.concatenate(pcg_array)
         csize_array = np.concatenate(csize_array)
-    except:
+    except ValueError:
         pass
     volumes = bins_volumes[csize_array]
     volume_counts = weighted_bin_count(pcg_array, volumes)
 
-    return normalize(volume_counts)
+    return normalize(volume_counts), volumes
 
 
 @nb.njit(cache=True)
