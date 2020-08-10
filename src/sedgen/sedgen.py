@@ -79,6 +79,11 @@ class SedGen():
                 self.calculate_bins_medians(self.size_bins)
             self.n_bins = len(self.size_bins)
 
+            self.search_bins = self.initialize_search_bins()
+            self.search_bins_medians = \
+                self.calculate_search_bins_medians()
+            self.ratio_search_bins = self.calculate_ratio_search_bins()
+
             self.volume_bins = self.calculate_volume_bins()
             self.volume_bins_medians = \
                 self.calculate_bins_medians(self.volume_bins)
@@ -209,6 +214,15 @@ class SedGen():
 
     def calculate_volume_bins(self):
         return calculate_volume_sphere(self.size_bins)
+
+    def initialize_search_bins(self):
+        return calculate_volume_sphere(np.array([2.0**x for x in np.linspace(-25, 5, self.n_bins*2+1)]))
+
+    def calculate_search_bins_medians(self):
+        return self.calculate_bins_medians(self.search_bins)
+
+    def calculate_ratio_search_bins(self):
+        return self.search_bins_medians / self.search_bins_medians[-1]
 
     def calculate_N_crystals(self, m, learning_rate=1000):
         total_volume_mineral = 0
