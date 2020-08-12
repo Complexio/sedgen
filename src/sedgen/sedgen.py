@@ -45,7 +45,7 @@ from collections import deque
 """
 
 
-class SedGen():
+class SedGen:
 
     def __init__(self, minerals, parent_rock_volume, modal_mineralogy,
                  csd_means, csd_stds, interfacial_composition=None,
@@ -65,6 +65,8 @@ class SedGen():
         assert np.isclose(np.sum(modal_mineralogy), 1.0), \
             "Modal mineralogy proportions do not sum to 1"
 
+        # Divide parent rock volume over all mineral classes based on
+        # modal mineralogy
         self.modal_volume = self.parent_rock_volume * self.modal_mineralogy
 
         print("Initializing csds...")
@@ -225,6 +227,14 @@ class SedGen():
         return self.search_bins_medians / self.search_bins_medians[-1]
 
     def calculate_N_crystals(self, m, learning_rate=1000):
+        """Request crystals from CSD until accounted modal volume is
+        filled.
+        Idea: use pdf to speed up process
+
+        From this, the number of crystals per mineral class will be
+        known while also giving the total number of crystals (N) in 1 m³
+        of parent rock.
+        """
         total_volume_mineral = 0
         requested_volume = self.modal_volume[m]
         crystals = deque()
@@ -377,7 +387,8 @@ class SedGen():
         necessary
         """
         interface_array_corr = self.interface_array.copy()
-        diff = [np.sum(self.interface_array == x) for x in range(6)] - self.minerals_N
+        diff = [np.sum(self.interface_array == x) for x in range(6)] \
+            - self.minerals_N
 
         for index, item in enumerate(diff):
             if item > 0:
