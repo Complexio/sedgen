@@ -4,99 +4,191 @@ import numba as nb
 from sedgen import sedgen
 
 
-def inter_crystal_breakage(model, n_timesteps, verbose=False,
-                           n_standard_cases=2000, p=[0.5],
-                           intra_cb_thresholds=[1/256]):
+class Weathering:
 
-    interface_constant_prob = \
-        model.interface_size_prob * model.interface_strengths_prob
-    standard_prob_loc_cases = np.array([create_interface_location_prob(np.arange(x)) for x in range(1, n_standard_cases+1)], dtype=np.object)
+    def __init__(self, model, n_timesteps, n_standard_cases=2000,
+                 intra_cb_p=[0.5], intra_cb_thresholds=[1/256]):
+        self.n_timesteps = n_timesteps
+        self.n_standard_cases = n_standard_cases
 
-    bins = model.volume_bins_medians.copy()
-    volume_perc_change_unit = bins[0] / bins[1]
-    n_minerals = len(model.minerals)
-    n_bins = len(bins)
+        self.interface_constant_prob = \
+            model.interface_size_prob * model.interface_strengths_prob
+        self.standard_prob_loc_cases = \
+            np.array([create_interface_location_prob(
+                np.arange(x)) for x in range(1, n_standard_cases+1)],
+                dtype=np.object)
 
-    pcgs_new = [model.interface_array.copy()]
-    interface_constant_prob_new = [interface_constant_prob.copy()]
-    mass_balance_initial = np.sum(model.simulated_volume)
-#     print("mass balance initial:", mass_balance_initial)
-    crystal_size_array_new = [model.crystal_size_array.copy()]
-    interface_counts = model.interface_counts_matrix.copy()
+        self.bins = model.volume_bins_medians.copy()
+        self.volume_perc_change_unit = self.bins[0] / self.bins[1]
+        self.n_minerals = len(model.minerals)
+        self.n_bins = len(self.bins)
+        self.mass_balance_initial = np.sum(model.simulated_volume)
+        self.search_bins_medians = model.search_bins_medians
+        # print("mass balance initial:", mass_balance_initial)
 
-    mcg = np.zeros((n_minerals, n_bins), dtype=np.uint32)
-#     residue_mcg_total = np.zeros(n_minerals, dtype=np.float64)
-    residue = np.zeros(n_minerals, dtype=np.float64)
-    residue_count = np.zeros(n_minerals, dtype=np.uint32)
+        self.pcgs_new = [model.interface_array.copy()]
+        self.interface_constant_prob_new = \
+            [self.interface_constant_prob.copy()]
+        self.crystal_size_array_new = [model.crystal_size_array.copy()]
+        self.interface_counts = model.interface_counts_matrix.copy()
 
-    # Create array of intra-crystal breakage probabilities
-    p = mineral_property_setter(p, n_minerals)
+        self.mcg = np.zeros((self.n_minerals, self.n_bins), dtype=np.uint32)
+        # self.residue_mcg_total = np.zeros(self.n_minerals, dtype=np.float64)
+        self.residue = np.zeros(self.n_minerals, dtype=np.float64)
+        self.residue_count = np.zeros(self.n_minerals, dtype=np.uint32)
 
-    # Create array of intra-cyrstal breakage size thresholds
-    intra_cb_thresholds = mineral_property_setter(intra_cb_thresholds,
-                                                  n_minerals)
+        # Create array of intra-crystal breakage probabilities
+        self.intra_cb_p = self.mineral_property_setter(intra_cb_p)
 
-    # Model's evolution tracking arrays initialization
-    pcg_additions = np.zeros(n_timesteps, dtype=np.uint32)
-    mcg_additions = np.zeros(n_timesteps, dtype=np.uint32)
-    mcg_broken_additions = np.zeros(n_timesteps, dtype=np.uint32)
-    residue_additions = np.zeros(n_timesteps, dtype=np.float64)
-    residue_count_additions = np.zeros(n_timesteps, dtype=np.uint32)
-    pcg_chem_residue_additions = \
-        np.zeros((n_timesteps, n_minerals), dtype=np.float64)
-    mcg_chem_residue_additions = \
-        np.zeros((n_timesteps, n_minerals), dtype=np.float64)
+        # Create array of intra-cyrstal breakage size thresholds
+        self.intra_cb_thresholds = \
+            self.mineral_property_setter(intra_cb_thresholds)
 
-    pcg_comp_evolution = []
-    pcg_size_evolution = []
+        self.mcg_chem_residue = 0
+        self.pcg_chem_residue = 0
 
-    # Determine intra-crystal breakage discretization 'rules'
-    intra_cb_dict = \
-        determine_intra_cb_dict(n_bins * 2 - 2, model.ratio_search_bins)
-    intra_cb_breaks = intra_cb_dict[1].copy()
-    diffs_volumes = intra_cb_dict[2].copy()
+        # Model's evolution tracking arrays initialization
+        self.pcg_additions = np.zeros(self.n_timesteps, dtype=np.uint32)
+        self.mcg_additions = np.zeros(self.n_timesteps, dtype=np.uint32)
+        self.mcg_broken_additions = np.zeros(self.n_timesteps, dtype=np.uint32)
+        self.residue_additions = np.zeros(self.n_timesteps, dtype=np.float64)
+        self.residue_count_additions = \
+            np.zeros(self.n_timesteps, dtype=np.uint32)
+        self.pcg_chem_residue_additions = \
+            np.zeros((self.n_timesteps, self.n_minerals), dtype=np.float64)
+        self.mcg_chem_residue_additions = \
+            np.zeros((self.n_timesteps, self.n_minerals), dtype=np.float64)
 
-    # Start model
-    for step in range(n_timesteps):
-        # What timestep we're at
-        print(f"{step}/{n_timesteps}", end="\r", flush=True)
+        self.pcg_comp_evolution = []
+        self.pcg_size_evolution = []
 
-        # intra-crystal breakage
-        # --------------------------------------------------------------
-        mcg_broken, residue, residue_count = \
-            intra_crystal_breakage_binned(mcg, p, intra_cb_thresholds, residue,
-                                          residue_count, model,
-                                          intra_cb_breaks, diffs_volumes)
-#         print("after intra_cb mcg_vol:", np.sum(bins * mcg_broken))
-#         print("after intra_cb residue:", np.sum(residue))
-        mcg = mcg_broken.copy()
-        # --------------------------------------------------------------
+        # Determine intra-crystal breakage discretization 'rules'
+        self.intra_cb_dict = \
+            determine_intra_cb_dict(self.n_bins * 2 - 2,
+                                    model.ratio_search_bins)
+        self.intra_cb_breaks = self.intra_cb_dict[1].copy()
+        self.diffs_volumes = self.intra_cb_dict[2].copy()
 
-        # inter-crystal breakage
-        # --------------------------------------------------------------
-        pcgs_old = pcgs_new
+    def weathering(self,
+                   operations=["intra_cb",
+                               "inter_cb",
+                               "chem_mcg",
+                               "chem_pcg"],
+                   display_mass_balance=False):
+
+        mcg_broken = np.zeros_like(self.mcg)
+
+        # Start model
+        for step in range(self.n_timesteps):
+            # What timestep we're at
+            print(f"{step}/{self.n_timesteps}", end="\r", flush=True)
+
+            # Perform weathering operations
+            for operation in operations:
+                if operation == "intra_cb":
+                    # intra-crystal breakage
+                    mcg_broken, residue, residue_count = \
+                        self.intra_crystal_breakage_binned()
+                    self.mcg = mcg_broken.copy()
+                    # print("after intra_cb mcg_vol:",
+                    # np.sum(bins * mcg_broken))
+                    # print("after intra_cb residue:", np.sum(residue))
+
+                elif operation == "inter_cb":
+                    # inter-crystal breakage
+                    self.pcgs_new, self.interface_constant_prob_new,\
+                    self.crystal_size_array_new, self.mcg = \
+                        self.inter_crystal_breakage(step)
+
+                # To Do: Provide option for different speeds of chemical
+                # weathering per mineral class. This could be done by
+                # moving to a different number of volume bins (n) per
+                # mineral class. For the volume_perc_change this would
+                # become: volume_perc_change = volume_perc_change ** n
+                elif operation == "chem_mcg":
+                    # chemical weathering of mcg
+                    self.mcg, self.mcg_chem_residue = \
+                        self.chemical_weathering_mcg()
+
+                elif operation == "chem_pcg":
+                    # chemical weathering of pcg
+                    self.crystal_size_array_new, self.pcg_chem_residue = \
+                        self.chemical_weathering_pcg()
+
+                else:
+                    print(f"Warning: {operation} not recognized as a valid operation, skipping and continueing")
+                    continue
+
+            # Mass balance check
+            if display_mass_balance:
+                # mass balance = vol_pcg + vol_mcg + residue
+                vol_mcg = np.sum([self.bins * self.mcg])
+                print("vol_mcg:", vol_mcg)
+                vol_residue = \
+                    np.sum(self.residue_additions) + np.sum(self.pcg_chem_residue_additions) + \
+                    np.sum(self.mcg_chem_residue_additions)
+                print("mcg_intra_cb_residue:", np.sum(self.residue_additions))
+                print("pcg_chem_residue:", np.sum(self.pcg_chem_residue_additions))
+                print("mcg_chem_residue:", np.sum(self.mcg_chem_residue_additions))
+                print("vol_residue:", vol_residue)
+                vol_pcg = np.sum([np.sum(self.bins[pcg]) for pcg in self.crystal_size_array_new])
+                print("vol_pcg:", vol_pcg)
+
+                mass_balance = vol_pcg + vol_mcg + vol_residue
+                print(f"new mass balance after step {step}: {mass_balance}\n")
+
+            # Track model's evolution
+            self.mcg_broken_additions[step] = \
+                np.sum([np.sum(x) for x in mcg_broken])  # - np.sum(mcg_broken_additions)
+            # self.residue_mcg_total += self.residue
+            self.residue_additions[step] = \
+                np.sum(self.residue) - np.sum(self.residue_additions)
+            self.residue_count_additions[step] = np.sum(self.residue_count)
+
+            self.pcg_additions[step] = len(self.pcgs_new)
+            self.mcg_additions[step] = np.sum(self.mcg)# - np.sum(mcg_additions)
+
+            self.pcg_comp_evolution.append(self.pcgs_new)
+            self.pcg_size_evolution.append(self.crystal_size_array_new)
+
+            self.pcg_chem_residue_additions[step] = self.pcg_chem_residue
+            self.mcg_chem_residue_additions[step] = self.mcg_chem_residue
+
+            if not self.pcgs_new:  # Faster to check if pcgs_new has any items
+                print(f"After {step} steps all pcg have been broken down to mcg")
+                break
+
+        return self.pcgs_new, self.mcg, self.pcg_additions, \
+            self.mcg_additions, self.pcg_comp_evolution, \
+            self.pcg_size_evolution, self.interface_counts, \
+            self.crystal_size_array_new, self.mcg_broken_additions, \
+            self.residue_additions, self.residue_count_additions, \
+            self.pcg_chem_residue_additions, self.mcg_chem_residue_additions
+
+    def inter_crystal_breakage(self, step, verbose=False):
+        pcgs_old = self.pcgs_new
         pcgs_new = []
         pcgs_new_append = pcgs_new.append
 
-        interface_constant_prob_old = interface_constant_prob_new
+        interface_constant_prob_old = self.interface_constant_prob_new
         interface_constant_prob_new = []
         interface_constant_prob_new_append = interface_constant_prob_new.append
 
-        crystal_size_array_old = crystal_size_array_new
+        crystal_size_array_old = self.crystal_size_array_new
         crystal_size_array_new = []
         crystal_size_array_new_append = crystal_size_array_new.append
 
         c_creator = np.random.RandomState(step)
-        c = c_creator.random(size=pcg_additions[step-1] + 1)
+        c = c_creator.random(size=self.pcg_additions[step-1] + 1)
 
-        mcg_temp = [[] for i in range(n_minerals)]
-#         interface_indices = List()
+        mcg_temp = [[] for i in range(self.n_minerals)]
+    #         interface_indices = List()
 
         for i, (pcg, prob, csize) in enumerate(zip(pcgs_old, interface_constant_prob_old, crystal_size_array_old)):
 
             # Select interface for inter-crystal breakage
-            if len(pcg) <= n_standard_cases:
-                location_prob = standard_prob_loc_cases[len(pcg) - 1]
+            if len(pcg) <= self.n_standard_cases:
+                location_prob = self.standard_prob_loc_cases[len(pcg) - 1]
             else:
                 location_prob = create_interface_location_prob(pcg)
 
@@ -129,103 +221,91 @@ def inter_crystal_breakage(model, n_timesteps, verbose=False,
             # Remove interface from interface_counts_matrix
             # Faster to work with matrix than with list and post-loop
             # operations as with the mcg counting
-            interface_counts[pcg[interface-1], pcg[interface]] -= 1
-#             interface_indices.append((pcg[interface-1], pcg[interface]))
+            self.interface_counts[pcg[interface-1], pcg[interface]] -= 1
+    #             interface_indices.append((pcg[interface-1], pcg[interface]))
 
         # Add counts from mcg_temp to mcg
-#         mcg_temp_matrix = np.zeros((n_minerals, n_bins), dtype=np.uint32)
-        mcg_temp_matrix = np.asarray([np.bincount(mcg_temp_list, minlength=n_bins) for mcg_temp_list in mcg_temp])
-#         print(mcg_temp_matrix.shape)
-#         for i, mcg_bin_count in enumerate(mcg_bin_counts):
-#             mcg_temp_matrix[i, :len(mcg_bin_count)] = mcg_bin_count
-        mcg += mcg_temp_matrix.astype(np.uint32)
-        # --------------------------------------------------------------
+    #         mcg_temp_matrix = np.zeros((n_minerals, n_bins), dtype=np.uint32)
+        mcg_temp_matrix = \
+            np.asarray([np.bincount(mcg_temp_list, minlength=self.n_bins)
+                       for mcg_temp_list in mcg_temp])
+    #         print(mcg_temp_matrix.shape)
+    #         for i, mcg_bin_count in enumerate(mcg_bin_counts):
+    #             mcg_temp_matrix[i, :len(mcg_bin_count)] = mcg_bin_count
+        mcg_new = self.mcg + mcg_temp_matrix.astype(np.uint32)
 
-        # Remove counts from interface_counts via interface_temp
-#         interface_temp_count = count_interfaces(np.array(interface_temp))
-#         interface_temp_matrix = convert_counted_interfaces_to_matrix(interface_temp_count)
-#         interface_counts -= interface_temp_matrix
-#         interface_counts = account_interfaces(interface_counts, interface_indices)
+        return pcgs_new, interface_constant_prob_new, crystal_size_array_new,\
+            mcg_new
 
-        # To Do: Provide option for different speeds of chemical
-        # weathering per mineral class. This could be done by moving to
-        # a different number of volume bins (n) per mineral class.
-        # For the volume_perc_change this would become:
-        # volume_perc_change = volume_perc_change ** n
+    def mineral_property_setter(self, p):
+        if len(p) == 1:
+            return np.array([p] * self.n_minerals)
+        elif len(p) == self.n_minerals:
+            return np.array(p)
+        else:
+            raise ValueError("p should be of length 1 or same length as minerals")
 
-        # Chemical weathering pcg
-        # --------------------------------------------------------------
-        crystal_size_array_new, pcg_chem_residue = \
-            chemical_weathering_pcg(crystal_size_array_new,
-                                    pcgs_new, bins,
-                                    volume_perc_change_unit)
-        # --------------------------------------------------------------
+    def intra_crystal_breakage_binned(self):
+        mcg_new = np.zeros_like(self.mcg)
+        residue_new = self.residue.copy()
+        residue_count_new = self.residue_count.copy()
 
-        # Chemical weathering mcg
-        # --------------------------------------------------------------
-        mcg, mcg_chem_residue = \
-            chemical_weathering_mcg(mcg,
-                                    volume_perc_change_unit,
-                                    bins)
-        # --------------------------------------------------------------
+        for i, m_old in enumerate(self.mcg):
+            if all(m_old == 0):
+                mcg_new[i] = m_old
+            else:
+                # m_new, residue_new, residue_count_new = \
+                # perform_intra_crystal_breakage_binned(
+                    # m_old, self.intra_cb_p, self.intra_cb_thresholds, i)
+                m_new, residue_add, residue_count_add = \
+                    perform_intra_crystal_breakage_2d(
+                        m_old, self.intra_cb_p, i, self.search_bins_medians,
+                        self.intra_cb_breaks, 200, self.diffs_volumes)
+                mcg_new[i] = m_new
+                residue_new[i] += residue_add
+                residue_count_new[i] += residue_count_add
 
-        # Model's evolution
-        # --------------------------------------------------------------
-        mcg_broken_additions[step] = np.sum([np.sum(x) for x in mcg_broken])# - np.sum(mcg_broken_additions)
-#         residue_mcg_total += residue
-        residue_additions[step] = np.sum(residue) - np.sum(residue_additions)
-        residue_count_additions[step] = np.sum(residue_count)
+        return mcg_new, residue_new, residue_count_new
 
-        pcg_additions[step] = len(pcgs_new)
-#         print("pcg_nr:", pcg_additions[step])
-#         n_mcg = 0
-#         for m in mcg:
-#             n_mcg += len(m)
-        mcg_additions[step] = np.sum(mcg)# - np.sum(mcg_additions)
-#         print("mcg_nr", mcg_additions[step])
-#         print("mcg_broken_nr", mcg_broken_additions[step])
-#         mcg_additions[step] = n_mcg - np.sum(mcg_additions)
+    def chemical_weathering_mcg(self, shift=1):
+        volume_perc_change = self.volume_perc_change_unit ** shift
 
-        pcg_comp_evolution.append(pcgs_new)
-        pcg_size_evolution.append(crystal_size_array_new)
+        residue_per_mineral = \
+            calculate_mcg_chem_residue(self.mcg,
+                                       self.bins,
+                                       volume_perc_change)
 
-        pcg_chem_residue_additions[step] = pcg_chem_residue
-        mcg_chem_residue_additions[step] = mcg_chem_residue
+        # Reduce size/volume of selected mcg by decreasing their
+        # size/volume bin by one
+        mcg_new = np.roll(self.mcg, shift=-shift, axis=1)
+        # Remove artefact from roll operation
+        mcg_new[:, -shift:] = 0
+        # print(mcg_new)
 
-#         # Mass balance check
-#         # mass balance = vol_pcg + vol_mcg + residue
-#         vol_mcg = np.sum([bins * mcg])
-#         print("vol_mcg:", vol_mcg)
-#         vol_residue = \
-#             np.sum(residue_additions) + np.sum(pcg_chem_residue_additions) + \
-#             np.sum(mcg_chem_residue_additions)
-#         print("mcg_intra_cb_residue:", np.sum(residue_additions), np.sum(residue_mcg_total))
-#         print("pcg_chem_residue:", np.sum(pcg_chem_residue_additions))
-#         print("mcg_chem_residue:", np.sum(mcg_chem_residue_additions))
-#         print("vol_residue:", vol_residue)
-#         vol_pcg = np.sum([np.sum(bins[pcg]) for pcg in crystal_size_array_new])
-#         print("vol_pcg:", vol_pcg)
+        return mcg_new, residue_per_mineral
 
-#         mass_balance = vol_pcg + vol_mcg + vol_residue
-#         print(f"new mass balance at step {step}: {mass_balance}\n")
+    def chemical_weathering_pcg(self, shift=1):
+        """Not taking into account that crystals on the inside of the
+        pcg will be less, if even, affected by chemical weathering than
+        those on the outside of the pcg"""
 
-        if not pcgs_new:  # Faster to check if pcgs_new has any items
-            print(f"After {step} steps all pcg have been broken down to mcg")
-            break
+        # Need to keep structure of pcgs so can't concatenate here
+        csize_new = \
+            np.subtract(self.crystal_size_array_new, shift, dtype=np.object)
+        volume_perc_change = self.volume_perc_change_unit ** shift
 
-    return pcgs_new, mcg, pcg_additions, mcg_additions, pcg_comp_evolution, \
-        pcg_size_evolution, interface_counts, crystal_size_array_new, \
-        mcg_broken_additions, residue_additions, residue_count_additions, \
-        pcg_chem_residue_additions, mcg_chem_residue_additions
+        # Also need to keep track of formed residue
+        modal_mineralogy, volumes_old = \
+            sedgen.calculate_modal_mineralogy_pcg(self.pcgs_new,
+                                                  self.crystal_size_array_new,
+                                                  self.bins)
 
+        old_volume = np.sum(volumes_old)
+        residue = old_volume * (1 - volume_perc_change)
 
-def mineral_property_setter(p, n_minerals):
-    if len(p) == 1:
-        return np.array([p] * n_minerals)
-    elif len(p) == n_minerals:
-        return np.array(p)
-    else:
-        raise ValueError("p should be of length 1 or same length as minerals")
+        residue_per_mineral = residue * modal_mineralogy
+
+        return csize_new, residue_per_mineral
 
 
 def create_interface_location_prob(a):
@@ -234,7 +314,8 @@ def create_interface_location_prob(a):
     The outer interfaces have a higher chance of breakage than the
     inner ones based on their location within the pcg.
     This represents a linear function.
-    Perhaps other functions might be added (spherical) to see the effects later on
+    Perhaps other functions might be added (spherical) to see the
+    effects later on.
     """
     size, corr = divmod(len(a), 2)
 #     print(size)
@@ -266,30 +347,6 @@ def select_interface(i, probs, c):
 def calculate_normalized_probability(location_prob, prob):
     probability = location_prob * prob
     return probability / np.sum(probability)
-
-
-def intra_crystal_breakage_binned(mcg_old, p, intra_cb_thresholds, residue_old,
-                                  residue_count_old, model, intra_cb_breaks,
-                                  diffs_volumes):
-    mcg_new = np.zeros_like(mcg_old)
-    residue_new = residue_old.copy()
-    residue_count_new = residue_count_old.copy()
-
-    for i, m_old in enumerate(mcg_old):
-        if all(m_old == 0):
-            mcg_new[i] = m_old
-        else:
-#             m_new, residue_new, residue_count_new = perform_intra_crystal_breakage_binned(m_old, p, intra_cb_thresholds, i)
-            m_new, residue_add, residue_count_add = perform_intra_crystal_breakage_2d(m_old, p, i, model.search_bins_medians, intra_cb_breaks, 200, diffs_volumes)
-            mcg_new[i] = m_new
-            residue_new[i] += residue_add
-            residue_count_new[i] += residue_count_add
-    return mcg_new, residue_new, residue_count_new
-
-
-# Enable option for chemical weathering on not all mcg at same time
-# later on (if this is realistic actual that some mcg will be affected
-# by chemical weathering while others are not).
 
 
 @nb.njit(cache=True)
@@ -367,35 +424,6 @@ def perform_intra_crystal_breakage_2d(mcg_old, prob, i, search_bins,
     return mcg_new, residue_new, residue_count
 
 
-# Perform function per mineral class
-def chemical_weathering_mcg(mcg_old, volume_perc_change_unit, bins, shift=1):
-    mcg_new = np.zeros_like(mcg_old)
-    volume_perc_change = volume_perc_change_unit ** shift
-
-    ## Create selection array based on chemical weathering importance
-
-    ## Select mcg
-    ## Keep non-selected mcg in their respective size/volume bins
-
-    residue_per_mineral = calculate_mcg_chem_residue(mcg_old, bins,
-                                                     volume_perc_change)
-
-    # Keep track of residue formed by shifting bins
-#     residue_per_mineral = np.sum(mcg_old[:, 1:] * volume_bins_medians[1:], axis=1) * (1 - volume_perc_change)
-    # Add total volume of first bin to residue
-#     residue_per_mineral += mcg_old[:, 0] * volume_bins_medians[0]
-
-    # Reduce size/volume of selected mcg by decreasing their size/volume bin by one
-    mcg_new = np.roll(mcg_old, shift=-shift, axis=1)
-    # Remove artefact from roll operation
-    mcg_new[:, -shift:] = 0
-#     print(mcg_new)
-
-    ## Concatenate non affected mcg with chemical weathered mcg
-
-    return mcg_new, residue_per_mineral
-
-
 @nb.njit(cache=True)
 def calculate_mcg_chem_residue(mcg_old, bins, volume_perc_change):
     # Keep track of residue formed by shifting bins
@@ -405,29 +433,6 @@ def calculate_mcg_chem_residue(mcg_old, bins, volume_perc_change):
     residue_per_mineral += mcg_old[:, 0] * bins[0]
 
     return residue_per_mineral
-
-
-# Perform function on all pcgs in csize_array simultaneously
-
-def chemical_weathering_pcg(csize_old, pcg_old, bins, volume_perc_change_unit,
-                            shift=1):
-    """Not taking into account that crystals on the inside of the pcg
-    will be less, if even, affected by chemical weathering than those on
-    the outside of the pcg"""
-    # Need to keep structure of pcgs so can't concatenate here
-    csize_new = np.subtract(csize_old, shift, dtype=np.object)
-    volume_perc_change = volume_perc_change_unit ** shift
-
-    # Also need to keep track of formed residue
-    modal_mineralogy, volumes_old = \
-        sedgen.calculate_modal_mineralogy_pcg(pcg_old, csize_old, bins)
-
-    old_volume = np.sum(volumes_old)
-    residue = old_volume * (1 - volume_perc_change)
-
-    residue_per_mineral = residue * modal_mineralogy
-
-    return csize_new, residue_per_mineral
 
 
 def determine_intra_cb_dict(bin_label, ratio_search_bins, verbose=False,
