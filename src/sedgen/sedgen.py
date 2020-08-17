@@ -155,7 +155,6 @@ class SedGen:
             self.interface_array, self.interface_counts_matrix = \
                 self.perform_double_interface_array_correction()
             self.interface_pairs = create_pairs(self.interface_array)
-
         print("Initializing crystal size array...", end=" ")
         if timed:
             tic3 = time.perf_counter()
@@ -218,7 +217,7 @@ class SedGen:
         return calculate_volume_sphere(self.size_bins)
 
     def initialize_search_bins(self):
-        return calculate_volume_sphere(np.array([2.0**x for x in np.linspace(-25, 5, self.n_bins*2+1)]))
+        return calculate_volume_sphere(np.array([2.0**x for x in np.linspace(-25, 5, self.n_bins*2-1)]))
 
     def calculate_search_bins_medians(self):
         return self.calculate_bins_medians(self.search_bins)
@@ -466,8 +465,9 @@ class SedGen:
                 pair_index = (interface_array_corr[-1], index)
                 interface_frequencies_corr[pair_index] += prob_unit
                 # Add crystals to interface_array_corr
-                interface_array_corr = np.append(interface_array_corr,
-                                                 [index] * -item)
+                interface_array_corr = \
+                    np.concatenate((interface_array_corr,
+                                    np.array([index] * -item, dtype=np.uint8)))
                 # Add newly formed isomineral interfaces
                 interface_frequencies_corr[index, index] += (-item - 1) * prob_unit
                 # print(pair_index)
@@ -661,6 +661,9 @@ def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes,
         csize_array = np.concatenate(csize_array)
     except ValueError:
         pass
+    print(bins_volumes.dtype)
+    print(csize_array.dtype)
+    print(pcg_array.dtype)
     volumes = bins_volumes[csize_array]
     volume_counts = weighted_bin_count(pcg_array, volumes)
 
