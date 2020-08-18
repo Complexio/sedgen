@@ -628,7 +628,19 @@ class SedGen:
 @nb.njit(cache=True, nogil=True)
 def calculate_volume_sphere(r, diameter=True):
     """Calculates volume of a sphere
-    Numba speeds up this function by 2x
+
+    Parameters:
+    -----------
+    r : np.array(float)
+        Crystal sizes
+    diameter : bool(optional)
+        Whether given sizes are the diameter (True) or radius (False);
+        defaults to True
+
+    Returns:
+    --------
+    volume : np.array(float)
+        Volumes of spheres
     """
     if diameter:
         r = r/2
@@ -639,23 +651,63 @@ def calculate_volume_sphere(r, diameter=True):
 
 @nb.njit(cache=True, nogil=True)
 def calculate_equivalent_circular_diameter(volume):
+    """Calculates the equivalent circular diameter based on a given
+    volume"""
     diameter = 2 * (3/4 * volume / np.pi) ** (1/3)
 
     return diameter
 
 
 def calculate_number_proportions_pcg(pcg_array):
+    """Calculates the number proportions of the mineral classes present
+
+    Parameters:
+    -----------
+    pcg_array : np.array
+        Array holding the mineral identities of the crystals part of
+        poly-crystalline grains
+
+    Returns:
+    --------
+    number_proportions : np.array
+        Normalized number proportions of crystals forming part of
+        poly-crystalline grains
+    """
     try:
         pcg_array = np.concatenate(pcg_array)
     except ValueError:
         pass
     crystals_count = np.bincount(pcg_array)
     print(crystals_count)
-    return crystals_count / np.sum(crystals_count)
+    number_proportions = normalize(crystals_count)
+    return number_proportions
 
 
 def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes,
                                    return_volumes=True):
+    """Calculates the volumetric proportions of the mineral classes
+    present.
+
+    Parameters:
+    -----------
+    pcg_array : np.array
+        Array holding the mineral identities of the crystals part of
+        poly-crystalline grains
+    csize_array : np.array
+        Array holding the crystal sizes in bin labels
+    bins_volumes : np.array
+        Bins to use for calculation of the crystal's volumes
+    return_volumes : bool (optional)
+        Whether to return the calculated volumes of the crystal or not;
+        defaults to True
+
+    Returns:
+    modal_mineralogy: np.array
+        Volumetric proportions of crystals forming part of
+        poly-crystalline grains
+    volumes : np.array
+        Volumes of crystals forming part of poly-crystalline grains
+    """
     try:
         pcg_array = np.concatenate(pcg_array)
         csize_array = np.concatenate(csize_array)
@@ -666,8 +718,12 @@ def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes,
     print(pcg_array.dtype)
     volumes = bins_volumes[csize_array]
     volume_counts = weighted_bin_count(pcg_array, volumes)
+    modal_mineralogy = normalize(volume_counts)
 
-    return normalize(volume_counts), volumes
+    if return_volumes:
+        return modal_mineralogy, volumes
+    else:
+        return modal_mineralogy
 
 
 @nb.njit(cache=True)
@@ -677,6 +733,7 @@ def weighted_bin_count(a, w):
 
 @nb.njit(cache=True)
 def normalize(data):
+    """Normalize given data so that sum equals 1"""
     return data / np.sum(data)
 
 

@@ -163,7 +163,8 @@ class Weathering:
                 print("mcg_chem_residue:",
                       np.sum(self.mcg_chem_residue_additions))
                 print("vol_residue:", vol_residue)
-                vol_pcg = np.sum([np.sum(self.bins[pcg]) for pcg in self.crystal_size_array_new])
+                vol_pcg = np.sum([np.sum(self.bins[pcg])
+                                  for pcg in self.crystal_size_array_new])
                 print("vol_pcg:", vol_pcg)
 
                 mass_balance = vol_pcg + vol_mcg + vol_residue
