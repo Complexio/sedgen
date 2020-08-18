@@ -46,6 +46,38 @@ from collections import deque
 
 
 class SedGen:
+    """Initializes a SedGen model based on fundamental properties of
+    modal mineralogy, interfacial composition and crystal size statistics
+
+    Parameters:
+    -----------
+    minerals : list
+        Mineral classes to use in model; the order in which the minerals
+        are specified here should be kept accros all other parameters
+    parent_rock_volume : float
+        Volume representing parent rock to fill with crystals at start
+        of model
+    modal_mineralogy : np.array
+        Volumetric proportions of mineral classes at start of model
+    csd_means : np.array
+        Crystal size means of mineral classes
+    csd_stds :np.array
+        Crystal size standard deviations of mineral classes
+    interfacial_composition : np.array (optional)
+    learning_rate : int (optional)
+        Amount of change used during determination of N crystals per
+        mineral class; defaults to 1000
+    timed : bool (optional)
+        Show timings of various initialization steps; defaults to False
+    fast_calc : bool (optional)
+        Whether to use the fast but less accurate method of initializing
+        a model, defaults to True
+    binned : bool (optional)
+        Whether to bin crystal sizes; defaults to True
+    volume_binned : bool (optional)
+        Whether to use bins based on volumes of crystal sizes;
+        defaults to False
+    """
 
     def __init__(self, minerals, parent_rock_volume, modal_mineralogy,
                  csd_means, csd_stds, interfacial_composition=None,

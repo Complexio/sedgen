@@ -5,6 +5,30 @@ from sedgen import sedgen
 
 
 class Weathering:
+    """Prepares an initalized SedGen model for various weathering
+    processes and executes them over specified number of timesteps
+
+    Parameters:
+    -----------
+    model : sedgen.sedgen
+        Initalized SedGen model
+    n_timesteps : int
+        Number of iterations for the for loop which executes the given
+        weathering processes
+    n_standard_cases : int (optional)
+        Number of standard cases to calculate the interface location
+        probabilties for; defaults to 2000
+    intra_cb_p : list(float) (optional)
+        List of probabilities [0, 1] to specify how many of
+        mono-crystalline grains per size bin will be effected by
+        intra-crystal breakage every timestep; defaults to [0.5] to use
+        0.5 for all present mineral classes
+    intra_cb_thresholds : list(float (optional))
+        List of intra-crystal breakage size thresholds of mineral
+        classes to specify that under the given theshold, intra_crystal
+        breakage will not effect the mono-crystalline grains anymore;
+        defaults to [1/256] to use 1/256 for all mineral classes
+    """
 
     def __init__(self, model, n_timesteps, n_standard_cases=2000,
                  intra_cb_p=[0.5], intra_cb_thresholds=[1/256]):

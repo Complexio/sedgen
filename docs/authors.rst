@@ -1,2 +1,2 @@
-.. _authors:
+.. _authors: Bram Paredis
 .. include:: ../AUTHORS.rst
