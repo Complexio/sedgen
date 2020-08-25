@@ -745,9 +745,9 @@ def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes,
         csize_array = np.concatenate(csize_array)
     except ValueError:
         pass
-    print(bins_volumes.dtype)
-    print(csize_array.dtype)
-    print(pcg_array.dtype)
+    # print(bins_volumes.dtype)
+    # print(csize_array.dtype)
+    # print(pcg_array.dtype)
     volumes = bins_volumes[csize_array]
     volume_counts = weighted_bin_count(pcg_array, volumes)
     modal_mineralogy = normalize(volume_counts)
