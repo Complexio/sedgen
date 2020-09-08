@@ -23,18 +23,6 @@ This is the documentation of **sedgen**.
     `Google style`_ (recommended!), `NumPy style`_ and `classical style`_.
 
 
-Contents
-========
-
-.. toctree::
-   :maxdepth: 2
-
-   License <license>
-   Authors <authors>
-   Changelog <changelog>
-   Module Reference <api/modules>
-
-
 Indices and tables
 ==================
 
