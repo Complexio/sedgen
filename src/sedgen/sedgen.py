@@ -10,7 +10,7 @@ import time
 from collections import deque
 
 
-"""To Do:
+"""TODO:
     - Provide option to specify generated minerals based on a number
       instead of filling up a given volume. In the former case, the
       simulated volume attribute also has more meaning.
@@ -61,7 +61,7 @@ class SedGen:
         Volumetric proportions of mineral classes at start of model
     csd_means : np.array
         Crystal size means of mineral classes
-    csd_stds :np.array
+    csd_stds : np.array
         Crystal size standard deviations of mineral classes
     interfacial_composition : np.array (optional)
     learning_rate : int (optional)
@@ -204,8 +204,22 @@ class SedGen:
             print("")
 
         print("Initializing inter-crystal breakage probability arrays...")
+        # ???
+        # Probability arrays need to be normalized so that they carry
+        # the same weight (importance) down the line. During
+        # calculations with the probility arrays, weights might be added
+        # as coefficients to change the importance of the different
+        # arrays as required.
+        # ???
+
+        # The more an interface is located towards the outside of a
+        # grain, the more chance it has to be broken.
         self.interface_location_prob = self.create_interface_location_prob()
+        # The higher the strength of an interface, the less chance it
+        # has to be broken.
         self.interface_strengths_prob = self.get_interface_stregths_prob()
+        # The bigger an interface is, the more chance it has to be
+        # broken.
         self.interface_size_prob = self.get_interface_size_prob()
 
         print("\n---SedGen model initialization finished succesfully---")
@@ -639,7 +653,8 @@ class SedGen:
         return actual_volumes
 
     def get_interface_size_prob(self):
-        interface_size_prob = np.min(create_pairs(self.crystal_size_array))
+        interface_size_prob = np.min(create_pairs(self.crystal_size_array),
+                                     axis=1)
         # Since this represents probabilities, we don't want zeros as a
         # possible value but a 0 size bin exists.
         # Therefore all values are raised by 1 to go around this issue.

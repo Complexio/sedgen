@@ -4,7 +4,7 @@ import numba as nb
 from sedgen import sedgen
 
 """
-To Do:
+TODO:
     - Change intra_cb_p to a function so that smaller crystal sizes have
      a smaller chance of intra_cb breakage and bigger ones a higher
      chance.
@@ -35,26 +35,60 @@ class Weathering:
         mono-crystalline grains per size bin will be effected by
         intra-crystal breakage every timestep; defaults to [0.5] to use
         0.5 for all present mineral classes
-    intra_cb_thresholds : list(float (optional))
+    intra_cb_thresholds : list(float) (optional)
         List of intra-crystal breakage size thresholds of mineral
         classes to specify that under the given theshold, intra_crystal
         breakage will not effect the mono-crystalline grains anymore;
         defaults to [1/256] to use 1/256 for all mineral classes
+    chem_weath_rates : list(float) (optional)
+        List of chemical weathering rates of mineral rates specified as
+        'mm/year'. This is scaled internally to be implemented in a
+        relative manner; defaults to [0.01] to use 0.01 mm/yr for all
+        mineral classes as chemical weathering rate.
+    enable_interface_location_prob : bool (optional)
+        If True, the location of an interface along a pcg, will have an
+        effect on its probability of breakage during inter-crystal
+        breakage. Interfaces towards the outside of an pcg are more
+        likely to break than those on the inside; defaults to True.
+    enable_multi_pcg_breakage : bool (optional)
+        If True, during inter-crystal breakage a pcg may break in more
+        than two new pcg/mcg grains. This option might speed up the
+        model. By activating all interfaces weaker than the selected
+        interfaces, this behavior might be accomplished.
+    enable_pcg_selection : bool (optional)
+        If True, a selection of pcgs is performed to determine which
+        pcgs will be affected by inter-crystal breakage during one
+        iteration of the weathering procedure. Larger volume pcgs will
+        have a higher chance of being selected than smaller ones. If
+        enabled, this option probably will slow down the model in
+        general.
+
     """
 
     def __init__(self, model, n_timesteps, n_standard_cases=2000,
-                 intra_cb_p=[0.5], intra_cb_thresholds=[1/256]):
+                 intra_cb_p=[0.5], intra_cb_thresholds=[1/256],
+                 chem_weath_rates=[0.01], enable_interface_location_prob=True,
+                 enable_multi_pcg_breakage=False, enable_pcg_selection=False):
         self.n_timesteps = n_timesteps
         self.n_standard_cases = n_standard_cases
+        self.enable_interface_location_prob = enable_interface_location_prob
+        self.enable_multi_pcg_breakage = enable_multi_pcg_breakage
+        self.enable_pcg_selection = enable_pcg_selection
 
         self.interface_constant_prob = \
-            model.interface_size_prob * model.interface_strengths_prob
-        self.standard_prob_loc_cases = \
-            np.array([create_interface_location_prob(
-                np.arange(x)) for x in range(1, n_standard_cases+1)],
-                dtype=np.object)
+            model.interface_size_prob / model.interface_strengths_prob
+
+        if self.enable_interface_location_prob:
+            # Calculate interface_location_prob array for standard
+            # configurations of pcgs so that can be looked up later on
+            # instead of being calculated ad hoc.
+            self.standard_prob_loc_cases = \
+                np.array([create_interface_location_prob(
+                    np.arange(x)) for x in range(1, n_standard_cases+1)],
+                    dtype=np.object)
 
         self.bins = model.volume_bins_medians.copy()
+        self.size_bins = model.size_bins_medians.copy()
         self.volume_perc_change_unit = self.bins[0] / self.bins[1]
         self.n_minerals = len(model.minerals)
         self.n_bins = len(self.bins)
@@ -66,9 +100,13 @@ class Weathering:
         self.interface_constant_prob_new = \
             [self.interface_constant_prob.copy()]
         self.crystal_size_array_new = [model.crystal_size_array.copy()]
+        self.pcg_chem_weath_array_new = np.zeros_like(self.pcgs_new)
         self.interface_counts = model.interface_counts_matrix.copy()
 
         self.mcg = np.zeros((self.n_minerals, self.n_bins), dtype=np.uint32)
+        self.mcg_chem_weath = \
+            np.zeros((self.n_minerals, self.n_bins, self.n_timesteps),
+                     dtype=np.uint32)
         # self.residue_mcg_total = np.zeros(self.n_minerals, dtype=np.float64)
         self.residue = \
             np.zeros((self.n_timesteps, self.n_minerals), dtype=np.float64)
@@ -82,6 +120,10 @@ class Weathering:
         self.intra_cb_thresholds = \
             self.mineral_property_setter(intra_cb_thresholds)
 
+        # Create array of chemical weathering rates
+        self.chem_weath_rates = \
+            self.mineral_property_setter(chem_weath_rates)
+
         self.mcg_chem_residue = 0
         self.pcg_chem_residue = 0
 
@@ -89,7 +131,8 @@ class Weathering:
         self.pcg_additions = np.zeros(self.n_timesteps, dtype=np.uint32)
         self.mcg_additions = np.zeros(self.n_timesteps, dtype=np.uint32)
         self.mcg_broken_additions = np.zeros(self.n_timesteps, dtype=np.uint32)
-        self.residue_additions = np.zeros(self.n_timesteps, dtype=np.float64)
+        self.residue_additions = \
+            np.zeros((self.n_timesteps, self.n_minerals), dtype=np.float64)
         self.residue_count_additions = \
             np.zeros(self.n_timesteps, dtype=np.uint32)
         self.pcg_chem_residue_additions = \
@@ -103,6 +146,13 @@ class Weathering:
         self.mcg_evolution = \
             np.zeros((self.n_timesteps, self.n_minerals, self.n_bins),
                      dtype=np.uint32)
+
+        # Create bin arrays to capture chemical weathering
+        self.size_bins_matrix, self.volume_bins_matrix = \
+            self.create_bins_matrix()
+
+        # TODO: Expand this section to include multiple intra_cb_dicts
+        # for n timesteps
 
         # Determine intra-crystal breakage discretization 'rules'
         self.intra_cb_dict, self.intra_cb_breaks, self.diffs_volumes = \
@@ -133,6 +183,10 @@ class Weathering:
             # Perform weathering operations
             for operation in operations:
                 if operation == "intra_cb":
+                    # To Do: Insert check on timestep or n_mcg to
+                    # perform intra_cb_breakage per mineral and per bin
+                    # or in one operation for all bins and minerals.
+
                     # intra-crystal breakage
                     mcg_broken, residue, residue_count = \
                         self.intra_crystal_breakage_binned(alternator=step)
@@ -174,8 +228,7 @@ class Weathering:
             # self.residue_mcg_total += self.residue
             # print(self.residue[:step])
             # print(self.residue_additions)
-            self.residue_additions[step] = \
-                np.sum(self.residue[step])
+            self.residue_additions[step] = self.residue[step]
             # print(self.residue_additions)
             self.residue_count_additions[step] = \
                 np.sum(self.residue_count) - \
@@ -250,43 +303,51 @@ class Weathering:
 
         for i, (pcg, prob, csize) in enumerate(zip(pcgs_old, interface_constant_prob_old, crystal_size_array_old)):
 
-            # Select interface for inter-crystal breakage
-            if len(pcg) <= self.n_standard_cases:
-                location_prob = self.standard_prob_loc_cases[len(pcg) - 1]
-            else:
-                location_prob = create_interface_location_prob(pcg)
+            if self.enable_interface_location_prob:
+                # Calculate interface location probability
+                if len(pcg) <= self.n_standard_cases:
+                    location_prob = self.standard_prob_loc_cases[len(pcg) - 1]
+                else:
+                    location_prob = create_interface_location_prob(pcg)
 
-            # Calculate normalized probability
-            probability_normalized = \
-                calculate_normalized_probability(location_prob, prob)
+                # Calculate normalized probability
+                probability_normalized = \
+                    calculate_normalized_probability(location_prob, prob)
+
+            else:
+                probability_normalized = sedgen.normalize(prob)
 
             # Select interface to break pcg on
             interface = select_interface(i, probability_normalized, c)
 
-            # Using indexing instead of np.split is faster.
-            # Also avoids the problem of possible 2D arrays instead of
-            # 1D being created if array gets split in half.
-            # Evuluate first new pcg
-            if pcg[:interface].size != 1:  # This implies that len(new_prob) != 0
-                pcgs_new_append(pcg[:interface])
-                crystal_size_array_new_append(csize[:interface])
-                interface_constant_prob_new_append(prob[:interface-1])
-            else:
-                mcg_temp[pcg[interface-1]].append(csize[interface-1])
+            if self.enable_multi_pcg_breakage:
+                pass
 
-            # Evaluate second new pcg
-            if pcg[interface:].size != 1:  # This implies that len(new_prob) != 0
-                pcgs_new_append(pcg[interface:])
-                crystal_size_array_new_append(csize[interface:])
-                interface_constant_prob_new_append(prob[interface:])
             else:
-                mcg_temp[pcg[interface]].append(csize[interface])
+                # Using indexing instead of np.split is faster.
+                # Also avoids the problem of possible 2D arrays instead of
+                # 1D being created if array gets split in half.
+                # Evuluate first new pcg
+                if pcg[:interface].size != 1:  # This implies that len(new_prob) != 0
+                    pcgs_new_append(pcg[:interface])
+                    crystal_size_array_new_append(csize[:interface])
+                    interface_constant_prob_new_append(prob[:interface-1])
+                else:
+                    mcg_temp[pcg[interface-1]].append(csize[interface-1])
 
-            # Remove interface from interface_counts_matrix
-            # Faster to work with matrix than with list and post-loop
-            # operations as with the mcg counting
-            self.interface_counts[pcg[interface-1], pcg[interface]] -= 1
-    #             interface_indices.append((pcg[interface-1], pcg[interface]))
+                # Evaluate second new pcg
+                if pcg[interface:].size != 1:  # This implies that len(new_prob) != 0
+                    pcgs_new_append(pcg[interface:])
+                    crystal_size_array_new_append(csize[interface:])
+                    interface_constant_prob_new_append(prob[interface:])
+                else:
+                    mcg_temp[pcg[interface]].append(csize[interface])
+
+                # Remove interface from interface_counts_matrix
+                # Faster to work with matrix than with list and post-loop
+                # operations as with the mcg counting
+                self.interface_counts[pcg[interface-1], pcg[interface]] -= 1
+        #             interface_indices.append((pcg[interface-1], pcg[interface]))
 
         # Add counts from mcg_temp to mcg
     #         mcg_temp_matrix = np.zeros((n_minerals, n_bins), dtype=np.uint32)
@@ -302,6 +363,12 @@ class Weathering:
             mcg_new
 
     def mineral_property_setter(self, p):
+        """Assigns a specified property to multiple mineral classes if
+        needed"""
+
+        # TODO:
+        # Incorporate option to have a property specified per timestep.
+
         if len(p) == 1:
             return np.array([p] * self.n_minerals)
         elif len(p) == self.n_minerals:
@@ -375,6 +442,22 @@ class Weathering:
         residue_per_mineral = residue * modal_mineralogy
 
         return csize_new, residue_per_mineral
+
+    def create_bins_matrix(self):
+        """Create the matrix holding the arrays with bins which each
+        represent the inital bin array minus x times the chemical
+        weathering rate per mineral class.
+        """
+
+        size_bins_matrix = \
+            np.array([[self.size_bins - x * self.chem_weath_rates[i]
+                      for x in range(self.n_timesteps)]
+                     for i in range(self.n_minerals)]
+                     )
+
+        volume_bins_matrix = sedgen.calculate_volume_sphere(size_bins_matrix)
+
+        return size_bins_matrix, volume_bins_matrix
 
 
 def create_interface_location_prob(a):
@@ -578,7 +661,7 @@ def determine_intra_cb_dict(bin_label, ratio_search_bins, verbose=False,
         diffs_volumes.append(1 - (specific_ratios[i] + specific_ratios[found_bin]))
         if i - found_bin == 0 + corr:
             break
-    return intra_cb_dict, np.array(diffs), np.array(diffs_volumes)
+    return intra_cb_dict, np.array(diffs, dtype=np.uint16), np.array(diffs_volumes)
 
 ### OLD CODE ###
 @nb.njit
