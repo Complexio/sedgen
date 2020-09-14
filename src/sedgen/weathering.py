@@ -321,7 +321,15 @@ class Weathering:
             interface = select_interface(i, probability_normalized, c)
 
             if self.enable_multi_pcg_breakage:
-                pass
+                prob_selected = probability_normalized[interface]
+                print(prob_selected)
+                interfaces_selected = \
+                    np.where(probability_normalized > prob_selected)[0]
+                print(interfaces_selected, len(interfaces_selected))
+
+                pcg_new = np.split(pcg, interfaces_selected)
+                csize_new = np.split(csize, interfaces_selected)
+                prob_new = np.split(prob, interfaces_selected)
 
             else:
                 # Using indexing instead of np.split is faster.

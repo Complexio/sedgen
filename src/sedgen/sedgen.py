@@ -749,6 +749,7 @@ def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes,
         defaults to True
 
     Returns:
+    --------
     modal_mineralogy: np.array
         Volumetric proportions of crystals forming part of
         poly-crystalline grains
