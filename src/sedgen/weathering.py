@@ -2,6 +2,7 @@ import numpy as np
 import numba as nb
 
 from sedgen import sedgen
+from sedgen.binning import Bin
 
 """
 TODO:
@@ -87,13 +88,16 @@ class Weathering:
                     np.arange(x)) for x in range(1, n_standard_cases+1)],
                     dtype=np.object)
 
-        self.bins = model.volume_bins_medians.copy()
+        self.volume_bins_medians = model.volume_bins_medians.copy()
         self.size_bins = model.size_bins_medians.copy()
-        self.volume_perc_change_unit = self.bins[0] / self.bins[1]
+        self.volume_perc_change_unit = \
+            self.volume_bins_medians[0] / self.volume_bins_medians[1]
         self.n_minerals = len(model.minerals)
-        self.n_bins = len(self.bins)
+        self.n_bins_medians = len(self.volume_bins_medians)
         self.mass_balance_initial = np.sum(model.simulated_volume)
+        self.search_bins = model.search_bins
         self.search_bins_medians = model.search_bins_medians
+        self.ratio_search_bins = model.ratio_search_bins
         # print("mass balance initial:", mass_balance_initial)
 
         self.pcgs_new = [model.interface_array.copy()]
@@ -103,9 +107,9 @@ class Weathering:
         self.pcg_chem_weath_array_new = np.zeros_like(self.pcgs_new)
         self.interface_counts = model.interface_counts_matrix.copy()
 
-        self.mcg = np.zeros((self.n_minerals, self.n_bins), dtype=np.uint32)
+        self.mcg = np.zeros((self.n_minerals, self.n_bins_medians), dtype=np.uint32)
         self.mcg_chem_weath = \
-            np.zeros((self.n_minerals, self.n_bins, self.n_timesteps),
+            np.zeros((self.n_minerals, self.n_bins_medians, self.n_timesteps),
                      dtype=np.uint32)
         # self.residue_mcg_total = np.zeros(self.n_minerals, dtype=np.float64)
         self.residue = \
@@ -144,20 +148,40 @@ class Weathering:
         self.pcg_size_evolution = []
 
         self.mcg_evolution = \
-            np.zeros((self.n_timesteps, self.n_minerals, self.n_bins),
+            np.zeros((self.n_timesteps, self.n_minerals, self.n_bins_medians),
                      dtype=np.uint32)
 
         # Create bin arrays to capture chemical weathering
         self.size_bins_matrix, self.volume_bins_matrix = \
             self.create_bins_matrix()
 
+        self.search_size_bins_matrix, self.search_volume_bins_matrix = \
+            self.create_search_bins_matrix()
+
+        self.search_size_bins_medians_matrix,\
+            self.search_volume_bins_medians_matrix = \
+            self.create_search_bins_medians_matrix()
+
+        self.ratio_search_size_bins_matrix,\
+            self.ratio_search_volume_bins_matrix = \
+            self.create_ratio_search_bins_matrix()
+
+        self.intra_cb_dicts_matrix, \
+            self.diffs_matrix, \
+            self.diffs_volumes_matrix = self.create_intra_cb_dicts_matrix()
+
         # TODO: Expand this section to include multiple intra_cb_dicts
         # for n timesteps
 
+        # Create ratio_search_bins_matrix
+        self.ratio_search_bins_matrix = self.create_ratio_search_bins_matrix()
+
+        # Create intra_cb_dicts for all bin_arrays
+
         # Determine intra-crystal breakage discretization 'rules'
         self.intra_cb_dict, self.intra_cb_breaks, self.diffs_volumes = \
-            determine_intra_cb_dict(self.n_bins * 2 - 2,
-                                    model.ratio_search_bins)
+            determine_intra_cb_dict(self.n_bins_medians * 2 - 2,
+                                    self.ratio_search_bins)
 
         self.intra_cb_dict_keys = \
             np.array(list(self.intra_cb_dict.keys()))
@@ -248,7 +272,7 @@ class Weathering:
             # Mass balance check
             if display_mass_balance:
                 # mass balance = vol_pcg + vol_mcg + residue
-                vol_mcg = np.sum([self.bins * self.mcg])
+                vol_mcg = np.sum([self.volume_bins_medians * self.mcg])
                 print("vol_mcg:", vol_mcg)
                 vol_residue = \
                     np.sum(self.residue_additions) + \
@@ -261,7 +285,7 @@ class Weathering:
                 print("mcg_chem_residue:",
                       np.sum(self.mcg_chem_residue_additions))
                 print("vol_residue:", vol_residue)
-                vol_pcg = np.sum([np.sum(self.bins[pcg])
+                vol_pcg = np.sum([np.sum(self.volume_bins_medians[pcg])
                                   for pcg in self.crystal_size_array_new])
                 print("vol_pcg:", vol_pcg)
 
@@ -360,7 +384,7 @@ class Weathering:
         # Add counts from mcg_temp to mcg
     #         mcg_temp_matrix = np.zeros((n_minerals, n_bins), dtype=np.uint32)
         mcg_temp_matrix = \
-            np.asarray([np.bincount(mcg_temp_list, minlength=self.n_bins)
+            np.asarray([np.bincount(mcg_temp_list, minlength=self.n_bins_medians)
                        for mcg_temp_list in mcg_temp])
     #         print(mcg_temp_matrix.shape)
     #         for i, mcg_bin_count in enumerate(mcg_bin_counts):
@@ -416,7 +440,7 @@ class Weathering:
 
         residue_per_mineral = \
             calculate_mcg_chem_residue(self.mcg,
-                                       self.bins,
+                                       self.volume_bins_medians,
                                        volume_perc_change)
 
         # Reduce size/volume of selected mcg by decreasing their
@@ -442,7 +466,7 @@ class Weathering:
         modal_mineralogy, volumes_old = \
             sedgen.calculate_modal_mineralogy_pcg(self.pcgs_new,
                                                   self.crystal_size_array_new,
-                                                  self.bins)
+                                                  self.volume_bins_medians)
 
         old_volume = np.sum(volumes_old)
         residue = old_volume * (1 - volume_perc_change)
@@ -459,13 +483,63 @@ class Weathering:
 
         size_bins_matrix = \
             np.array([[self.size_bins - x * self.chem_weath_rates[i]
-                      for x in range(self.n_timesteps)]
-                     for i in range(self.n_minerals)]
+                      for i in range(self.n_minerals)]
+                     for x in range(self.n_timesteps)]
                      )
 
         volume_bins_matrix = sedgen.calculate_volume_sphere(size_bins_matrix)
 
         return size_bins_matrix, volume_bins_matrix
+
+    def create_search_bins_matrix(self):
+        search_size_bins_matrix = \
+            np.array([[self.search_bins - x * self.chem_weath_rates[i]
+                      for i in range(self.n_minerals)]
+                     for x in range(self.n_timesteps)]
+                     )
+
+        search_volume_bins_matrix = \
+            sedgen.calculate_volume_sphere(search_size_bins_matrix)
+
+        return search_size_bins_matrix, search_volume_bins_matrix
+
+    def create_search_bins_medians_matrix(self):
+        search_size_bins_medians_matrix = \
+            sedgen.calculate_bins_medians(self.search_size_bins_matrix)
+
+        search_volume_bins_medians_matrix = \
+            sedgen.calculate_bins_medians(self.search_volume_bins_matrix)
+
+        return search_size_bins_medians_matrix, search_volume_bins_medians_matrix
+
+    def create_ratio_search_bins_matrix(self):
+        ratio_search_size_bins_matrix = \
+            calculate_ratio_search_bins_matrix(
+                self.search_size_bins_medians_matrix)
+        ratio_search_volume_bins_matrix = \
+            calculate_ratio_search_bins_matrix(
+                self.search_volume_bins_medians_matrix)
+
+        return ratio_search_size_bins_matrix, ratio_search_volume_bins_matrix
+
+    def create_intra_cb_dicts_matrix(self):
+        intra_cb_dicts_matrix = \
+            np.array([[determine_intra_cb_dict(self.n_bins_medians*2-2, self.ratio_search_volume_bins_matrix[x, i])
+                      for i in range(self.n_minerals)]
+                     for x in range(self.n_timesteps-1)],
+                     dtype='object')
+
+        diffs_matrix = intra_cb_dicts_matrix[:, :, 1]
+        diffs_volumes_matrix = \
+            intra_cb_dicts_matrix[:, :, 2]
+        intra_cb_dicts_matrix = intra_cb_dicts_matrix[:, :, 0]
+
+        return intra_cb_dicts_matrix, diffs_matrix, diffs_volumes_matrix
+
+
+def calculate_ratio_search_bins_matrix(search_bins_medians_matrix):
+    return search_bins_medians_matrix / \
+        search_bins_medians_matrix[:, :, -1, None]
 
 
 def create_interface_location_prob(a):
@@ -625,7 +699,7 @@ def calculate_mcg_chem_residue(mcg_old, bins, volume_perc_change):
 
 
 def determine_intra_cb_dict(bin_label, ratio_search_bins, verbose=False,
-                            corr=1):
+                            corr=1, return_arrays=True):
     """Determines the relations for the intra-crystal breakage
     discretization.
 
@@ -669,7 +743,12 @@ def determine_intra_cb_dict(bin_label, ratio_search_bins, verbose=False,
         diffs_volumes.append(1 - (specific_ratios[i] + specific_ratios[found_bin]))
         if i - found_bin == 0 + corr:
             break
-    return intra_cb_dict, np.array(diffs, dtype=np.uint16), np.array(diffs_volumes)
+
+    if return_arrays:
+        diffs = np.array(diffs, dtype=np.uint16)
+        diffs_volumes = np.array(diffs_volumes)
+
+    return intra_cb_dict, diffs, diffs_volumes
 
 ### OLD CODE ###
 @nb.njit

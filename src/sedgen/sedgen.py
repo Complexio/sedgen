@@ -87,6 +87,7 @@ class SedGen:
 
         print("Initializing modal mineralogy...")
         self.minerals = minerals
+        self.n_minerals = len(self.minerals)
         self.parent_rock_volume = parent_rock_volume
         self.modal_mineralogy = modal_mineralogy
         self.fast_calc = fast_calc
@@ -106,12 +107,13 @@ class SedGen:
         self.csd_stds = csd_stds
 
         self.csds = np.array([self.initialize_csd(m)
-                              for m in range(len(self.minerals))])
+                              for m in range(self.n_minerals)])
         if self.binned:
             self.size_bins = self.initialize_size_bins()
+            self.n_bins = len(self.size_bins)
             self.size_bins_medians = \
                 self.calculate_bins_medians(self.size_bins)
-            self.n_bins = len(self.size_bins)
+            self.n_bins_medians = self.n_bins - 1
 
             self.search_bins = self.initialize_search_bins()
             self.search_bins_medians = \
@@ -253,11 +255,8 @@ class SedGen:
 
     def calculate_bins_medians(self, bins):
         bins_medians = np.array([(bins[i] + bins[i+1]) / 2
-                                 for i in range(len(bins) - 1)])
+                                 for i in range(self.n_bins - 1)])
         return bins_medians
-
-    # def calculate_bins_medians_volumes(self):
-    #     return calculate_volume_sphere(self.bins_medians)
 
     def calculate_volume_bins(self):
         return calculate_volume_sphere(self.size_bins)
@@ -380,7 +379,7 @@ class SedGen:
         return interface_proportions_normalized
 
     def create_transitions(self, random_seed=525):
-        possibilities = np.arange(len(self.minerals), dtype=np.uint8)
+        possibilities = np.arange(self.n_minerals, dtype=np.uint8)
 
         prng = np.random.default_rng(random_seed)
 
@@ -545,7 +544,7 @@ class SedGen:
         matrix. Doesn't break if not all entries of the matrix are present
         in the count.
         """
-        count_matrix = np.zeros((len(self.minerals), len(self.minerals)))
+        count_matrix = np.zeros((self.n_minerals, self.n_minerals))
 
         for index, count in zip(*self.interface_counts):
             count_matrix[tuple(index)] = count
@@ -583,7 +582,7 @@ class SedGen:
 
     def calculate_actual_minerals_N(self):
         minerals_N_total_actual = [np.sum(self.interface_array == i)
-                                   for i in range(len(self.minerals))]
+                                   for i in range(self.n_minerals)]
         return minerals_N_total_actual
 
     def create_crystal_size_arrays(self, random_seed=434):
@@ -639,7 +638,7 @@ class SedGen:
         the crystal size array per mineral"""
         actual_volumes = []
 
-        for m in range(len(self.minerals)):
+        for m in range(self.n_minerals):
             # Get cystal size (binned) for mineral
             crystal_sizes = self.crystal_size_array[self.interface_array == m]
             # Convert bin labels to bin medians
@@ -666,7 +665,7 @@ class SedGen:
         # Check that number of crystals per mineral in interface array equals
         # the samen number in minerals_N
         assert all([np.sum(self.interface_array == x) for x in range(6)] -
-                   self.minerals_N == [0] * len(self.minerals)), "N is not the same in interface_array and minerals_N"
+                   self.minerals_N == [0] * self.n_minerals), "N is not the same in interface_array and minerals_N"
         # Check that
         # assert self.
         return "all good"
@@ -882,3 +881,33 @@ def create_interface_array(minerals_N, transitions_per_mineral):
 
     # Numba provides a ca. 80x times speedup
     # 1.2s compared to 1m45s
+
+
+def initialize_size_bins(lower=-10, upper=5, n_bins=1500):
+        bins = [2.0**x for x in np.linspace(lower, upper, n_bins+1)]
+        return np.array(bins)
+
+
+def calculate_bins_medians(bins):
+    bins_medians = np.array([(bins[i] + bins[i+1]) / 2
+                             for i in range(len(bins) - 1)])
+    return bins_medians
+
+
+def calculate_volume_bins(size_bins):
+    return calculate_volume_sphere(size_bins)
+
+
+def initialize_search_bins(n_bins):
+    search_bins = [2.0**x for x in np.linspace(-25,
+                                               5,
+                                               n_bins*2-1)]
+    return calculate_volume_sphere(np.array(search_bins))
+
+
+def calculate_search_bins_medians(search_bins):
+    return calculate_bins_medians(search_bins)
+
+
+def calculate_ratio_search_bins(search_bins_medians):
+    return search_bins_medians / search_bins_medians[-1]
