@@ -170,9 +170,6 @@ class Weathering:
             self.diffs_matrix, \
             self.diffs_volumes_matrix = self.create_intra_cb_dicts_matrix()
 
-        # TODO: Expand this section to include multiple intra_cb_dicts
-        # for n timesteps
-
         # Create ratio_search_bins_matrix
         self.ratio_search_bins_matrix = self.create_ratio_search_bins_matrix()
 
@@ -222,8 +219,8 @@ class Weathering:
 
                 elif operation == "inter_cb":
                     # inter-crystal breakage
-                    self.pcgs_new, self.interface_constant_prob_new,\
-                    self.crystal_size_array_new, self.mcg = \
+                    self.pcgs_new, self.crystal_size_array_new,\
+                    self.interface_constant_prob_new, self.mcg = \
                         self.inter_crystal_breakage(step)
 
                 # To Do: Provide option for different speeds of chemical
@@ -306,7 +303,29 @@ class Weathering:
             self.pcg_chem_residue_additions, self.mcg_chem_residue_additions, \
             self.mass_balance, self.mcg_evolution
 
-    def inter_crystal_breakage(self, step, verbose=False):
+    def inter_crystal_breakage(self, step):
+        """Performs inter-crystal breakage where poly-crystalline grains
+        will break on the boundary between two crystals.
+
+        Parameters:
+        -----------
+        step : int
+            ith iteration of the model (timestep number)
+
+        Returns:
+        --------
+        pcgs_new : list of np.array(uint8)
+            Newly formed list of poly-crystalline grains which are
+            represented as seperate numpy arrays
+        crystal_size_array_new: list of np.array(uint16)
+            Newly formed list of the crystal sizes of the pcgs which are again represented by numpy arrays
+        interface_constant_prob_new : list of np.array(float64)
+            Newly formed list of the inter-crystal breakage
+            probabilities for the present interfaces between crystals in
+            seperate pcgs again represented by arrays
+        mcg_new : np.array(uint32)
+            Newly formed mono-crystalline grains during inter-crystal
+            breakage"""
         pcgs_old = self.pcgs_new
         pcgs_new = []
         pcgs_new_append = pcgs_new.append
@@ -391,7 +410,7 @@ class Weathering:
     #             mcg_temp_matrix[i, :len(mcg_bin_count)] = mcg_bin_count
         mcg_new = self.mcg + mcg_temp_matrix.astype(np.uint32)
 
-        return pcgs_new, interface_constant_prob_new, crystal_size_array_new,\
+        return pcgs_new, crystal_size_array_new, interface_constant_prob_new, \
             mcg_new
 
     def mineral_property_setter(self, p):

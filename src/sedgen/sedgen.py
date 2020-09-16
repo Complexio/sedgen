@@ -14,34 +14,6 @@ from collections import deque
     - Provide option to specify generated minerals based on a number
       instead of filling up a given volume. In the former case, the
       simulated volume attribute also has more meaning.
-
-    - Make sure the differences between the initial minerals_N
-      simulation and the later filling of the interfaces and crystal
-      size arrays are not too big. Could these differences be avoided to
-      start with and thus work with only one representation?
-
-      --> Deviations due to randomness of creating the interface array
-          Not sure if this could be solved and if not better to go back
-          to old solution as this also provides a way of deactivating
-          one of the two parts of the operation. Once we know how many
-          crystals per mineral are in a certain volume of parent rock
-          for given csd information, we do not need to calculate this
-          every time we want to initalize the interface/mineral and
-          crystal size arrays.
-
-      --> It also seems that this proposed approach is not really worth
-          it time-efficiency wise.
-
-      --> Solution found but still needs to be checked. There remains a
-          small offset between the firstly initialized crystal size
-          array and the secondly interface array, though. This could be
-          resolved by setting the crystal size on 'missing' mineral
-          locations in the interface array, by starting back at the
-          beginning of the crystal size array.
-
-    - Provide user with option to bin crystal sizes or not. Or make the
-      decision automatically based on the total number of crystals
-      present.
 """
 
 
@@ -321,7 +293,7 @@ class SedGen:
                 # Capture and correct crystals that fall outside
                 # the leftmost bin as they end up as bin 0 but since 1 gets
                 # subtracted from all bins they end up as the highest value
-                # of np.uint16 as negative values are note possible
+                # of np.uint16 as negative values are not possible
 
                 else:
                     crystals_binned = \
@@ -422,8 +394,8 @@ class SedGen:
     def perform_interface_frequencies_correction(self):
         interface_frequencies_corr = self.interface_frequencies.copy()
         diff = np.sum(self.interface_frequencies) - (self.N_crystals - 1)
-        # print(diff)
         interface_frequencies_corr[0, 0] -= int(diff)
+
         return interface_frequencies_corr
 
     def perform_interface_array_correction(self):
@@ -495,7 +467,7 @@ class SedGen:
                         # interface present there. Therefore, only the first
                         # old interface needs to be removed. Checking if we are
                         # at the start of the array should not be necessary as # we always select corr_indices from the end of the
-                        # interfac_array.
+                        # interface_array.
 
                     # Delete crystals from interface_array_corr
                     interface_array_corr = \
@@ -562,10 +534,7 @@ class SedGen:
         effects later on
         """
         size, corr = divmod(len(self.interface_array), 2)
-    #     print(size)
-    #     print(corr)
         ranger = np.arange(size, 0, -1, dtype=np.uint32)
-    #     print(ranger[-2+corr::-1])
         chance = np.append(ranger, ranger[-2+corr::-1])
 
         return chance
@@ -666,8 +635,7 @@ class SedGen:
         # the samen number in minerals_N
         assert all([np.sum(self.interface_array == x) for x in range(6)] -
                    self.minerals_N == [0] * self.n_minerals), "N is not the same in interface_array and minerals_N"
-        # Check that
-        # assert self.
+
         return "all good"
 
 
@@ -760,9 +728,7 @@ def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes,
         csize_array = np.concatenate(csize_array)
     except ValueError:
         pass
-    # print(bins_volumes.dtype)
-    # print(csize_array.dtype)
-    # print(pcg_array.dtype)
+
     volumes = bins_volumes[csize_array]
     volume_counts = weighted_bin_count(pcg_array, volumes)
     modal_mineralogy = normalize(volume_counts)
