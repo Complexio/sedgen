@@ -1,5 +1,7 @@
 import numpy as np
 
+from sedgen.sedgen import calculate_volume_sphere
+
 
 class Bin:
     def __init__(self, n_bins=1500, lower=-10, higher=5):
@@ -8,39 +10,44 @@ class Bin:
         self.higher = higher
         self.range = self.higher - self.lower
 
-        self.size_bins = self.initialize_size_bins()
-        self.size_bins_medians = self.calculate_bins_medians()
+        # Size bins
+        self.size_bins = self.initialize_bins(self.lower,
+                                              self.upper,
+                                              self.n_bins+1)
+        self.size_bins_medians = calculate_bins_medians(self.size_bins)
 
-        self.volume_bins = self.initialize_volume_bins()
-        self.volume_bins_medians = \
-            self.calculate_bins_medians(self.volume_bins)
+        # Volume bins
+        self.volume_bins = calculate_volume_sphere(self.size_bins)
+        self.volume_bins_medians = calculate_bins_medians(self.volume_bins)
 
-        self.search_bins = self.initialize_search_bins()
-        self.search_bins_medians = self.calculate_search_bins_medians()
-        self.ratio_search_bins = self.calculate_ratio_search_bins()
+        # Search size bins
+        self.search_size_bins = self.initialize_bins(self.lower - self.range,
+                                                     self.upper,
+                                                     self.n_bins*2-1)
+        self.search_size_bins_medians = \
+            calculate_bins_medians(self.search_size_bins)
+        self.ratio_search_size_bins = \
+            calculate_ratio_bins(self.search_size_bins_medians)
 
-    def initialize_size_bins(self):
-        size_bins = \
-            [2.0**x for x
-             in np.linspace(self.lower, self.upper, self.n_bins+1)]
-        return np.array(size_bins)
+        # Search volume bins
+        self.search_volume_bins = \
+            calculate_volume_sphere(self.search_size_bins)
+        self.search_size_bins_medians = \
+            calculate_bins_medians(self.search_volume_bins)
+        self.ratio_search_volume_bins = \
+            calculate_ratio_bins(self.search_volume_bins_medians)
 
-    def calculate_bins_medians(self):
-        bins_medians = np.array([(self.size_bins[i] + self.size_bins[i+1]) / 2
-                                 for i in range(len(self.size_bins) - 1)])
-        return bins_medians
 
-    def initialize_volume_bins(self):
-        return self.calculate_volume_sphere(self.size_bins)
+def initialize_bins(lower, upper, n_bins):
+    size_bins = np.array([2.0**x for x in np.linspace(lower, upper, n_bins)])
+    return size_bins
 
-    def initialize_search_bins(self):
-        search_bins = [2.0**x for x in np.linspace(self.lower - self.range,
-                                                   self.higher,
-                                                   self.n_bins*2-1)]
-        return self.calculate_volume_sphere(np.array(search_bins))
 
-    def calculate_search_bins_medians(self):
-        return self.calculate_bins_medians(self.search_bins)
+def calculate_bins_medians(bins):
+    bins_medians = bins[..., :-1] + 0.5 * np.diff(bins, axis=-1)
+    return bins_medians
 
-    def calculate_ratio_search_bins(self):
-        return self.search_bins_medians / self.search_bins_medians[-1]
+
+def calculate_ratio_bins(bins):
+    ratio_bins = bins / bins[..., -1, None]
+    return ratio_bins
