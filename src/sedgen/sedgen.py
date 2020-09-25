@@ -87,14 +87,19 @@ class SedGen:
                 self.calculate_bins_medians(self.size_bins)
             self.n_bins_medians = self.n_bins - 1
 
-            self.search_bins = self.initialize_search_bins()
-            self.search_bins_medians = \
-                self.calculate_search_bins_medians()
-            self.ratio_search_bins = self.calculate_ratio_search_bins()
-
             self.volume_bins = self.calculate_volume_bins()
             self.volume_bins_medians = \
                 self.calculate_bins_medians(self.volume_bins)
+
+            self.search_size_bins = self.initialize_search_size_bins()
+            self.search_size_bins_medians = \
+                self.calculate_search_size_bins_medians()
+            self.ratio_search_size_bins = self.calculate_ratio_search_size_bins()
+
+            self.search_volume_bins = self.calculate_search_volume_bins()
+            self.search_volume_bins_medians = \
+                self.calculate_search_volume_bins_medians()
+            self.ratio_search_volume_bins = self.calculate_ratio_search_volume_bins()
 
         print("Simulating mineral occurences...", end=" ")
         if timed:
@@ -226,21 +231,29 @@ class SedGen:
         return np.array(bins)
 
     def calculate_bins_medians(self, bins):
-        bins_medians = np.array([(bins[i] + bins[i+1]) / 2
-                                 for i in range(self.n_bins - 1)])
+        bins_medians = bins[..., :-1] + 0.5 * np.diff(bins, axis=-1)
         return bins_medians
 
     def calculate_volume_bins(self):
         return calculate_volume_sphere(self.size_bins)
 
-    def initialize_search_bins(self):
-        return calculate_volume_sphere(np.array([2.0**x for x in np.linspace(-25, 5, self.n_bins*2-1)]))
+    def initialize_search_size_bins(self):
+        return np.array([2.0**x for x in np.linspace(-25, 5, self.n_bins*2-1)])
 
-    def calculate_search_bins_medians(self):
-        return self.calculate_bins_medians(self.search_bins)
+    def calculate_search_volume_bins(self):
+        return calculate_volume_sphere(self.search_size_bins)
 
-    def calculate_ratio_search_bins(self):
-        return self.search_bins_medians / self.search_bins_medians[-1]
+    def calculate_search_size_bins_medians(self):
+        return self.calculate_bins_medians(self.search_size_bins)
+
+    def calculate_search_volume_bins_medians(self):
+        return self.calculate_bins_medians(self.search_volume_bins)
+
+    def calculate_ratio_search_size_bins(self):
+        return self.search_size_bins_medians / self.search_size_bins_medians[-1]
+
+    def calculate_ratio_search_volume_bins(self):
+        return self.search_volume_bins_medians / self.search_volume_bins_medians[-1]
 
     def calculate_N_crystals(self, m, learning_rate=1000):
         """Request crystals from CSD until accounted modal volume is
@@ -631,7 +644,7 @@ class SedGen:
         return interface_size_prob
 
     def check_properties(self):
-        # Check that number of crystals per mineral in interface array equals
+        # Check that number of crystals per mineral in interfacedstackarray equals
         # the samen number in minerals_N
         assert all([np.sum(self.interface_array == x) for x in range(6)] -
                    self.minerals_N == [0] * self.n_minerals), "N is not the same in interface_array and minerals_N"
@@ -657,7 +670,7 @@ def calculate_volume_sphere(r, diameter=True):
         Volumes of spheres
     """
     if diameter:
-        r = r/2
+        r = r * 0.5
 
     volume = 4/3 * r*r*r * np.pi
     return volume
@@ -855,8 +868,7 @@ def initialize_size_bins(lower=-10, upper=5, n_bins=1500):
 
 
 def calculate_bins_medians(bins):
-    bins_medians = np.array([(bins[i] + bins[i+1]) / 2
-                             for i in range(len(bins) - 1)])
+    bins_medians = bins[..., :-1] + 0.5 * np.diff(bins, axis=-1)
     return bins_medians
 
 
