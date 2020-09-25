@@ -88,29 +88,37 @@ class Weathering:
                     np.arange(x)) for x in range(1, n_standard_cases+1)],
                     dtype=np.object)
 
+        self.n_minerals = len(model.minerals)
+        self.size_bins = model.size_bins.copy()
+        self.size_bins_medians = model.size_bins_medians.copy()
+        self.volume_bins = model.volume_bins.copy()
         self.volume_bins_medians = model.volume_bins_medians.copy()
-        self.size_bins = model.size_bins_medians.copy()
         self.volume_perc_change_unit = \
             self.volume_bins_medians[0] / self.volume_bins_medians[1]
-        self.n_minerals = len(model.minerals)
         self.n_bins_medians = len(self.volume_bins_medians)
         self.mass_balance_initial = np.sum(model.simulated_volume)
-        self.search_bins = model.search_bins
-        self.search_bins_medians = model.search_bins_medians
-        self.ratio_search_bins = model.ratio_search_bins
+        self.search_size_bins = model.search_size_bins
+        self.search_size_bins_medians = model.search_size_bins_medians
+        self.ratio_search_size_bins = model.ratio_search_size_bins
+        self.search_volume_bins = model.search_volume_bins
+        self.search_volume_bins_medians = model.search_volume_bins_medians
+        self.ratio_search_volume_bins = model.ratio_search_volume_bins
         # print("mass balance initial:", mass_balance_initial)
 
         self.pcgs_new = [model.interface_array.copy()]
         self.interface_constant_prob_new = \
             [self.interface_constant_prob.copy()]
         self.crystal_size_array_new = [model.crystal_size_array.copy()]
-        self.pcg_chem_weath_array_new = np.zeros_like(self.pcgs_new)
+        self.pcg_chem_weath_array_new = \
+            [np.zeros_like(model.interface_array.copy())]
         self.interface_counts = model.interface_counts_matrix.copy()
 
-        self.mcg = np.zeros((self.n_minerals, self.n_bins_medians), dtype=np.uint32)
-        self.mcg_chem_weath = \
-            np.zeros((self.n_minerals, self.n_bins_medians, self.n_timesteps),
+        self.mcg = \
+            np.zeros((self.n_timesteps, self.n_minerals, self.n_bins_medians),
                      dtype=np.uint32)
+        # self.mcg_chem_weath = \
+        #     np.zeros((self.n_timesteps, self.n_minerals, self.n_bins_medians),
+        #              dtype=np.uint32)
         # self.residue_mcg_total = np.zeros(self.n_minerals, dtype=np.float64)
         self.residue = \
             np.zeros((self.n_timesteps, self.n_minerals), dtype=np.float64)
@@ -239,7 +247,7 @@ class Weathering:
                         self.chemical_weathering_pcg()
 
                 else:
-                    print(f"Warning: {operation} not recognized as a valid operation, skipping and continueing")
+                    print(f"Warning: {operation} not recognized as a valid operation, skipping {operation} and continueing")
                     continue
 
             # Track model's evolution
@@ -284,13 +292,13 @@ class Weathering:
                 print("vol_residue:", vol_residue)
                 vol_pcg = np.sum([np.sum(self.volume_bins_medians[pcg])
                                   for pcg in self.crystal_size_array_new])
-                print("vol_pcg:", vol_pcg)
+                print("vol_pcg:", vol_pcg, "over", len(self.pcgs_new), "pcg")
 
                 mass_balance = vol_pcg + vol_mcg + vol_residue
                 self.mass_balance[step] = mass_balance
                 print(f"new mass balance after step {step}: {mass_balance}\n")
 
-            # If not pcgs are remaining anymore, stop the model
+            # If no pcgs are remaining anymore, stop the model
             if not self.pcgs_new:  # Faster to check if pcgs_new has any items
                 print(f"After {step} steps all pcg have been broken down to mcg")
                 break
@@ -325,7 +333,8 @@ class Weathering:
             seperate pcgs again represented by arrays
         mcg_new : np.array(uint32)
             Newly formed mono-crystalline grains during inter-crystal
-            breakage"""
+            breakage
+        """
         pcgs_old = self.pcgs_new
         pcgs_new = []
         pcgs_new_append = pcgs_new.append
@@ -740,7 +749,19 @@ def determine_intra_cb_dict(bin_label, ratio_search_bins, verbose=False,
         Absolute differences in bin label count between part 1 and part 2
         of broken mcg
     diffs_volumes : np.array
-        Differences in volume between part 1 and part 2 of broken mcg
+        Relative differences in volume between the original mcg and the
+        sum of part 1 and part 2 of broken mcg. This thus represents the percentage of the formed intra_cb residue with regard to the
+        original mcg's volume.
+
+    Example:
+    --------
+    original mcg label = 1156
+    new mcg part 1 label = 1075
+    new mcg part 2 label = 1146
+
+    diffs = 1146 - 1075 = 71
+    diffs_volumes = 1 - (ratio_bins[1075] + ratio_bins[1146])
+    formed intra_cb_residue = bins[1156] * diffs_volumes
     """
     intra_cb_dict = {}
     diffs = []
