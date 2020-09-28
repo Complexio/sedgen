@@ -14,6 +14,9 @@ TODO:
     operation on all selected mcg at same time. This can be done as the
     random location for intra_cb breakage stems from a discrete uniform
     distribution.
+    - Would be nice to work with masked arrays for the bin arrays to
+    mask negative values, but unfortunately numba does not yet provide
+    support for masked arrays.
 """
 
 
@@ -159,39 +162,58 @@ class Weathering:
             np.zeros((self.n_timesteps, self.n_minerals, self.n_bins_medians),
                      dtype=np.uint32)
 
-        # Create bin arrays to capture chemical weathering
-        self.size_bins_matrix, self.volume_bins_matrix = \
-            self.create_bins_matrix()
-
-        self.search_size_bins_matrix, self.search_volume_bins_matrix = \
-            self.create_search_bins_matrix()
-
-        self.search_size_bins_medians_matrix,\
-            self.search_volume_bins_medians_matrix = \
-            self.create_search_bins_medians_matrix()
-
-        self.ratio_search_size_bins_matrix,\
-            self.ratio_search_volume_bins_matrix = \
-            self.create_ratio_search_bins_matrix()
-
-        self.intra_cb_dicts_matrix, \
-            self.diffs_matrix, \
-            self.diffs_volumes_matrix = self.create_intra_cb_dicts_matrix()
-
-        # Create ratio_search_bins_matrix
-        self.ratio_search_bins_matrix = self.create_ratio_search_bins_matrix()
-
-        # Create intra_cb_dicts for all bin_arrays
-
         # Determine intra-crystal breakage discretization 'rules'
         self.intra_cb_dict, self.intra_cb_breaks, self.diffs_volumes = \
             determine_intra_cb_dict(self.n_bins_medians * 2 - 2,
-                                    self.ratio_search_bins)
+                                    self.ratio_search_volume_bins)
 
         self.intra_cb_dict_keys = \
             np.array(list(self.intra_cb_dict.keys()))
         self.intra_cb_dict_values = \
             np.array(list(self.intra_cb_dict.values()))
+
+        # Create bin arrays to capture chemical weathering
+        self.size_bins_matrix, self.volume_bins_matrix = \
+            self.create_bins_matrix()
+
+        self.size_bins_medians_matrix, self.volume_bins_medians_matrix = \
+            self.create_bins_medians_matrix()
+
+        # Volume change array
+        self.volume_change_matrix = -np.diff(self.volume_bins_medians_matrix, axis=0)
+
+        # Negative bin array thresholds
+        self.negative_volume_thresholds = \
+            np.argmax(self.size_bins_medians_matrix > 0, axis=2)
+
+        # Create search_bins_matrix
+        self.search_size_bins_matrix, self.search_volume_bins_matrix = \
+            self.create_search_bins_matrix()
+
+        # Create search_bins_medians_matrix
+        self.search_size_bins_medians_matrix,\
+            self.search_volume_bins_medians_matrix = \
+            self.create_search_bins_medians_matrix()
+
+        # Create ratio_search_bins_matrix
+        self.ratio_search_size_bins_matrix,\
+            self.ratio_search_volume_bins_matrix = \
+            self.create_ratio_search_bins_matrix()
+
+        # Create array with corresponding bins to intra_cb_thesholds
+        # for matrix of bin arrays
+        self.intra_cb_threshold_bin_matrix = \
+            np.zeros((self.n_timesteps, self.n_minerals), dtype=np.uint16)
+        for n in range(self.n_timesteps):
+            for m in range(self.n_minerals):
+                self.intra_cb_threshold_bin_matrix[n, m] = \
+                    np.argmax(self.size_bins_medians_matrix[n, m] >
+                              self.intra_cb_thresholds[m])
+
+        # Create intra_cb_dicts for all bin_arrays
+        self.intra_cb_dicts_matrix, \
+            self.intra_cb_breaks_matrix, \
+            self.diffs_volumes_matrix = self.create_intra_cb_dicts_matrix()
 
         self.mass_balance = np.zeros(self.n_timesteps, dtype=np.float64)
 
@@ -200,14 +222,15 @@ class Weathering:
                                "inter_cb",
                                "chem_mcg",
                                "chem_pcg"],
-                   display_mass_balance=False):
+                   display_mass_balance=False,
+                   display_mcg_sums=False):
 
         mcg_broken = np.zeros_like(self.mcg)
 
         # Start model
         for step in range(self.n_timesteps):
             # What timestep we're at
-            print(f"{step}/{self.n_timesteps}", end="\r", flush=True)
+            # print(f"{step}/{self.n_timesteps}", end="\r", flush=True)
 
             # Perform weathering operations
             for operation in operations:
@@ -220,6 +243,13 @@ class Weathering:
                     mcg_broken, residue, residue_count = \
                         self.intra_crystal_breakage_binned(alternator=step)
                     self.mcg = mcg_broken.copy()
+                    # Add new mcg to mcg_chem_weath array to be able to
+                    # use newly formed mcg during chemical weathering of
+                    # mcg
+                    # self.mcg_chem_weath[0] += self.mcg
+                    if display_mcg_sums:
+                        print("mcg sum over minerals after intra_cb but before inter_cb", np.sum(np.sum(self.mcg, axis=2), axis=0))
+                    # Account for residue
                     self.residue[step] = residue
                     self.residue_count[step] = residue_count
                     # print("after intra_cb mcg_vol:", np.sum(self.bins * mcg_broken))
@@ -230,6 +260,8 @@ class Weathering:
                     self.pcgs_new, self.crystal_size_array_new,\
                     self.interface_constant_prob_new, self.mcg = \
                         self.inter_crystal_breakage(step)
+                    if display_mcg_sums:
+                        print("mcg sum after inter_cb", np.sum(np.sum(self.mcg, axis=2), axis=0))
 
                 # To Do: Provide option for different speeds of chemical
                 # weathering per mineral class. This could be done by
@@ -240,6 +272,9 @@ class Weathering:
                     # chemical weathering of mcg
                     self.mcg, self.mcg_chem_residue = \
                         self.chemical_weathering_mcg()
+                    if display_mcg_sums:
+                        print("mcg sum after chem_mcg", np.sum(np.sum(self.mcg, axis=2), axis=0))
+                        print("mcg_chem_residue after chem_mcg", self.mcg_chem_residue)
 
                 elif operation == "chem_pcg":
                     # chemical weathering of pcg
@@ -272,13 +307,13 @@ class Weathering:
             self.pcg_chem_residue_additions[step] = self.pcg_chem_residue
             self.mcg_chem_residue_additions[step] = self.mcg_chem_residue
 
-            self.mcg_evolution[step] = self.mcg
+            self.mcg_evolution[step] = np.sum(self.mcg, axis=0)
 
             # Mass balance check
             if display_mass_balance:
                 # mass balance = vol_pcg + vol_mcg + residue
-                vol_mcg = np.sum([self.volume_bins_medians * self.mcg])
-                print("vol_mcg:", vol_mcg)
+                vol_mcg = np.sum([self.volume_bins_medians_matrix * self.mcg])
+                print("vol_mcg:", vol_mcg, "over", np.sum(self.mcg), "mcg")
                 vol_residue = \
                     np.sum(self.residue_additions) + \
                     np.sum(self.pcg_chem_residue_additions) + \
@@ -347,6 +382,10 @@ class Weathering:
         crystal_size_array_new = []
         crystal_size_array_new_append = crystal_size_array_new.append
 
+        pcg_chem_weath_array_old = self.pcg_chem_weath_array_new
+        pcg_chem_weath_array_new = []
+        pcg_chem_weath_array_new_append = pcg_chem_weath_array_new.append
+
         c_creator = np.random.RandomState(step)
         c = c_creator.random(size=self.pcg_additions[step-1] + 1)
 
@@ -354,6 +393,7 @@ class Weathering:
     #         interface_indices = List()
 
         for i, (pcg, prob, csize) in enumerate(zip(pcgs_old, interface_constant_prob_old, crystal_size_array_old)):
+            # print(pcg.shape, prob.shape, csize.shape)
 
             if self.enable_interface_location_prob:
                 # Calculate interface location probability
@@ -381,6 +421,7 @@ class Weathering:
 
                 pcg_new = np.split(pcg, interfaces_selected)
                 csize_new = np.split(csize, interfaces_selected)
+                # chem_new = np.split(chem, interfaces_selected)
                 prob_new = np.split(prob, interfaces_selected)
 
             else:
@@ -391,6 +432,7 @@ class Weathering:
                 if pcg[:interface].size != 1:  # This implies that len(new_prob) != 0
                     pcgs_new_append(pcg[:interface])
                     crystal_size_array_new_append(csize[:interface])
+                    # pcg_chem_weath_array_new_append(chem[:interface])
                     interface_constant_prob_new_append(prob[:interface-1])
                 else:
                     mcg_temp[pcg[interface-1]].append(csize[interface-1])
@@ -399,6 +441,7 @@ class Weathering:
                 if pcg[interface:].size != 1:  # This implies that len(new_prob) != 0
                     pcgs_new_append(pcg[interface:])
                     crystal_size_array_new_append(csize[interface:])
+                    # pcg_chem_weath_array_new_append(chem[interface:])
                     interface_constant_prob_new_append(prob[interface:])
                 else:
                     mcg_temp[pcg[interface]].append(csize[interface])
@@ -417,7 +460,8 @@ class Weathering:
     #         print(mcg_temp_matrix.shape)
     #         for i, mcg_bin_count in enumerate(mcg_bin_counts):
     #             mcg_temp_matrix[i, :len(mcg_bin_count)] = mcg_bin_count
-        mcg_new = self.mcg + mcg_temp_matrix.astype(np.uint32)
+        mcg_new = self.mcg.copy()
+        mcg_new[0] += mcg_temp_matrix.astype(np.uint32)
 
         return pcgs_new, crystal_size_array_new, interface_constant_prob_new, \
             mcg_new
@@ -437,46 +481,83 @@ class Weathering:
             raise ValueError("p should be of length 1 or same length as minerals")
 
     # TODO: generalize intra_cb_threshold_bin=200 parameter of perform_intra_crystal_breakage_2d; this can be calculated based on intra_cb_threshold and bins.
-    def intra_crystal_breakage_binned(self, alternator):
+    def intra_crystal_breakage_binned(self, alternator, start_bin_corr=5):
         mcg_new = np.zeros_like(self.mcg)
-        residue_new = np.zeros(self.n_minerals, dtype=np.float64)
-        residue_count_new = np.zeros(self.n_minerals, dtype=np.uint32)
+        residue_new = \
+            np.zeros((self.n_timesteps, self.n_minerals), dtype=np.float64)
+        residue_count_new = \
+            np.zeros((self.n_timesteps, self.n_minerals), dtype=np.uint32)
 
-        for m, m_old in enumerate(self.mcg):
-            if all(m_old == 0):
-                mcg_new[m] = m_old
-            else:
-                # m_new, residue_new, residue_count_new = \
-                # perform_intra_crystal_breakage_binned(
-                    # m_old, self.intra_cb_p, self.intra_cb_thresholds, i)
-                m_new, residue_add, residue_count_add = \
-                    perform_intra_crystal_breakage_2d(
-                        m_old, self.intra_cb_p, m, self.search_bins_medians,
-                        self.intra_cb_breaks, self.diffs_volumes,
-                        floor=alternator % 2,
-                        intra_cb_dict_keys=self.intra_cb_dict_keys,
-                        intra_cb_dict_values=self.intra_cb_dict_values)
-                mcg_new[m] = m_new
-                residue_new[m] = residue_add
-                residue_count_new[m] = residue_count_add
+        for n in range(self.n_timesteps):
+            for m, m_old in enumerate(self.mcg[n]):
+                if all(m_old == 0):
+                    mcg_new[n, m] = m_old
+                else:
+                    # print(n, m, np.where(m_old > 0))
+                    # m_new, residue_new, residue_count_new = \
+                    # perform_intra_crystal_breakage_binned(
+                        # m_old, self.intra_cb_p, self.intra_cb_thresholds, i)
+                    # print(n, m, m_old.shape)
+                    m_new, residue_add, residue_count_add = \
+                        perform_intra_crystal_breakage_2d.py_func(
+                            m_old,
+                            self.intra_cb_p,
+                            m, n,
+                            self.search_volume_bins_medians_matrix[n, m],
+                            self.intra_cb_breaks_matrix[n, m],
+                            self.diffs_volumes_matrix[n, m],
+                            floor=alternator % 2,
+                            intra_cb_threshold_bin=self.intra_cb_threshold_bin_matrix[n, m]+start_bin_corr,
+                            start_bin_corr=start_bin_corr)
+                    mcg_new[n, m] = m_new
+                    residue_new[n, m] = residue_add
+                    residue_count_new[n, m] = residue_count_add
         # print(residue_new)
+
+        residue_new = np.sum(residue_new, axis=0)
+        residue_count_new = np.sum(residue_count_new, axis=0)
 
         return mcg_new, residue_new, residue_count_new
 
     def chemical_weathering_mcg(self, shift=1):
-        volume_perc_change = self.volume_perc_change_unit ** shift
-
-        residue_per_mineral = \
-            calculate_mcg_chem_residue(self.mcg,
-                                       self.volume_bins_medians,
-                                       volume_perc_change)
+        # volume_perc_change = self.volume_perc_change_unit ** shift
 
         # Reduce size/volume of selected mcg by decreasing their
-        # size/volume bin by one
-        mcg_new = np.roll(self.mcg, shift=-shift, axis=1)
-        # Remove artefact from roll operation
-        mcg_new[:, -shift:] = 0
-        # print(mcg_new)
+        # size/volume bin array by one
+        mcg_new = np.roll(self.mcg, shift=shift, axis=0)
+
+        # Redisue
+        # 1. Residue from mcg being in a negative grain size class
+        residue_1 = np.zeros(self.n_minerals, dtype=np.float64)
+        for n in range(1, self.n_timesteps):
+            for m in range(self.n_minerals):
+                threshold = self.negative_volume_thresholds[n, m]
+                residue_1[m] += \
+                    np.sum(mcg_new[n, m, :threshold] *
+                           self.volume_bins_medians_matrix[n-1, m, :threshold])
+                # Remove mcg from mcg array that have been added to
+                # residue
+                mcg_new[n, m, :threshold] = 0
+
+        # 2. Residue from material being dissolved
+        # By multiplying the volume change matrix with the already
+        # 'rolled' mcg array and summing this over the mineral classes,
+        # we end up with the total residue per mineral formed by
+        # 'dissolution'.
+        residue_2 = \
+            np.sum(
+                np.sum(mcg_new[1:] * self.volume_change_matrix, axis=0),
+                axis=1)
+        residue_per_mineral = residue_1 + residue_2
+
+        # residue_per_mineral = 0#\
+        #     calculate_mcg_chem_residue(self.mcg,
+        #                                self.volume_bins_medians,
+        #                                volume_perc_change)
+
+        # # Remove artefact from roll operation
+        # mcg_new[:, -shift:] = 0
+        # # print(mcg_new)
 
         return mcg_new, residue_per_mineral
 
@@ -514,17 +595,32 @@ class Weathering:
                       for i in range(self.n_minerals)]
                      for x in range(self.n_timesteps)]
                      )
+        # if masked:
+        #     mask = size_bins_matrix < 0
+        #     size_bins_matrix = ma.masked_array(size_bins_matrix, mask)
 
         volume_bins_matrix = sedgen.calculate_volume_sphere(size_bins_matrix)
 
         return size_bins_matrix, volume_bins_matrix
 
+    def create_bins_medians_matrix(self):
+        size_bins_medians_matrix = \
+            sedgen.calculate_bins_medians(self.size_bins_matrix)
+        volume_bins_medians_matrix = \
+            sedgen.calculate_bins_medians(self.volume_bins_matrix)
+
+        return size_bins_medians_matrix, volume_bins_medians_matrix
+
     def create_search_bins_matrix(self):
         search_size_bins_matrix = \
-            np.array([[self.search_bins - x * self.chem_weath_rates[i]
+            np.array([[self.search_size_bins - x * self.chem_weath_rates[i]
                       for i in range(self.n_minerals)]
                      for x in range(self.n_timesteps)]
                      )
+        # if masked:
+        #     mask = search_size_bins_matrix < 0
+        #     search_size_bins_matrix = \
+        #         ma.masked_array(search_size_bins_matrix, mask)
 
         search_volume_bins_matrix = \
             sedgen.calculate_volume_sphere(search_size_bins_matrix)
@@ -551,23 +647,63 @@ class Weathering:
         return ratio_search_size_bins_matrix, ratio_search_volume_bins_matrix
 
     def create_intra_cb_dicts_matrix(self):
+        # Need to account for 'destruction' of geometric series due to
+        # chemical weathering --> implement chemical weathering rates
+        # into the function somehow.
+        # intra_cb_dicts_matrix = \
+        #     np.array([[[determine_intra_cb_dict(b, self.ratio_search_volume_bins_matrix[n, m])
+        #              for b in range(self.n_bins_medians+1000,
+        #                             self.n_bins_medians*2)]
+        #              for m in range(self.n_minerals)]
+        #              for n in range(self.n_timesteps)],
+        #              dtype='object')
+
         intra_cb_dicts_matrix = \
-            np.array([[determine_intra_cb_dict(self.n_bins_medians*2-2, self.ratio_search_volume_bins_matrix[x, i])
-                      for i in range(self.n_minerals)]
-                     for x in range(self.n_timesteps-1)],
-                     dtype='object')
-
-        diffs_matrix = intra_cb_dicts_matrix[:, :, 1]
+            np.zeros((self.n_timesteps, self.n_minerals), dtype='object')
+        intra_cb_breaks_matrix = \
+            np.zeros((self.n_timesteps, self.n_minerals), dtype='object')
         diffs_volumes_matrix = \
-            intra_cb_dicts_matrix[:, :, 2]
-        intra_cb_dicts_matrix = intra_cb_dicts_matrix[:, :, 0]
+            np.zeros((self.n_timesteps, self.n_minerals), dtype='object')
 
-        return intra_cb_dicts_matrix, diffs_matrix, diffs_volumes_matrix
+        for n in range(self.n_timesteps):
+            print(n)
+            for m in range(self.n_minerals):
+                # print("\t", m)
+
+                intra_cb_dict_array = \
+                    np.zeros(self.n_bins_medians - self.intra_cb_threshold_bin_matrix[n, m],
+                            dtype='object')
+                intra_cb_breaks_array = \
+                    np.zeros((self.n_bins_medians - self.intra_cb_threshold_bin_matrix[n, m],
+                        len(self.intra_cb_breaks)),
+                            dtype=np.uint16)
+                diffs_volumes_array = \
+                    np.zeros((self.n_bins_medians - self.intra_cb_threshold_bin_matrix[n, m],
+                        len(self.intra_cb_breaks)),
+                            dtype=np.float64)
+
+                for i, b in \
+                    enumerate(range(self.intra_cb_threshold_bin_matrix[n, m] +\
+                                    self.n_bins_medians,
+                                    self.n_bins_medians*2)):
+                    intra_cb_dict_array[i], intra_cb_breaks_array[i], diffs_volumes_array[i] = \
+                        determine_intra_cb_dict(b, self.ratio_search_volume_bins_matrix[n, m],
+                            max_n_values=len(self.intra_cb_breaks))
+                intra_cb_dicts_matrix[n, m] = intra_cb_dict_array
+                intra_cb_breaks_matrix[n, m] = intra_cb_breaks_array
+                diffs_volumes_matrix[n, m] = diffs_volumes_array
+
+        # intra_cb_breaks_matrix = intra_cb_dicts_matrix[..., 1]
+        # diffs_volumes_matrix = \
+        #     intra_cb_dicts_matrix[..., 2]
+        # intra_cb_dicts_matrix = intra_cb_dicts_matrix
+
+        return intra_cb_dicts_matrix, intra_cb_breaks_matrix, diffs_volumes_matrix
 
 
 def calculate_ratio_search_bins_matrix(search_bins_medians_matrix):
     return search_bins_medians_matrix / \
-        search_bins_medians_matrix[:, :, -1, None]
+        search_bins_medians_matrix[..., -1, None]
 
 
 def create_interface_location_prob(a):
@@ -612,10 +748,11 @@ def calculate_normalized_probability(location_prob, prob):
 
 
 @nb.njit(cache=True)
-def perform_intra_crystal_breakage_2d(mcg_old, prob, mineral_nr, search_bins,
+def perform_intra_crystal_breakage_2d(mcg_old, prob, mineral_nr, timestep,
+                                      search_bins,
                                       intra_cb_breaks, diffs_volumes,
                                       intra_cb_threshold_bin=200, floor=True,
-                                      verbose=False, corr=1,
+                                      verbose=False, corr=1, start_bin_corr=5,
                                       intra_cb_dict_keys=None,
                                       intra_cb_dict_values=None):
     # Certain percentage of mcg has to be selected for intra_cb
@@ -635,32 +772,47 @@ def perform_intra_crystal_breakage_2d(mcg_old, prob, mineral_nr, search_bins,
     else:
         # 2nd time selection
         mcg_selected = np.ceil(mcg_new * prob[mineral_nr]).astype(np.uint32)
+    # print(mcg_selected[mcg_selected > 0])
+    # print(np.sum(mcg_selected))
 
     # Sliced so that only the mcg above the intra_cb_threshold_bin are
     # affected; same reasoning in for loop below.
     mcg_new[intra_cb_threshold_bin:] -= mcg_selected[intra_cb_threshold_bin:]
 
-    n_max = np.max(mcg_selected[intra_cb_threshold_bin:])
-    breaker = \
-        np.random.randint(low=1,
-                          high=len(intra_cb_breaks),
-                          size=n_max)\
-        .astype(np.uint16)
+    # n_max = np.max(mcg_selected[intra_cb_threshold_bin:])
+    # breaker = \
+    #     np.random.randint(low=1,
+    #                       high=len(intra_cb_breaks),
+    #                       size=n_max)\
+    #     .astype(np.uint16)
 
     # 2. Create break points
     for i, n in enumerate(mcg_selected[intra_cb_threshold_bin:]):
-        # breaker = \
-        #     np.random.randint(low=1,
-        #                       high=len(intra_cb_breaks),
-        #                       size=n)\
-            # .astype(np.uint16)
-        p1 = i + intra_cb_threshold_bin + n_bins - breaker[:n] - corr
-        p2 = p1 - intra_cb_breaks[breaker[:n]]
+        intra_cb_breaks_to_use = \
+            intra_cb_breaks[i+start_bin_corr][intra_cb_breaks[i+start_bin_corr] > 0]
+        diffs_volumes_to_use = \
+            diffs_volumes[i+start_bin_corr][diffs_volumes[i+start_bin_corr] > 0]
+        if n == 0:
+            continue
+
+        if len(intra_cb_breaks_to_use) == 1:
+            breaker = np.zeros(n, dtype=np.uint16)
+        else:
+        # Why does 'low' have to be equal to 1??
+            breaker = \
+                np.random.randint(low=0,
+                                  high=len(intra_cb_breaks_to_use),
+                                  size=n)\
+                .astype(np.uint16)
+
+        p1 = i + intra_cb_threshold_bin + n_bins - breaker - corr
+        # print(breaker, n, intra_cb_breaks_to_use[breaker])
+        p2 = p1 - intra_cb_breaks_to_use[breaker]
         if verbose and len(p1) != 0:
-            print(i, intra_cb_threshold_bin, n_bins, breaker[:n])
-            print(intra_cb_dict_keys[breaker[:n]]-n_bins+intra_cb_threshold_bin+2+i)
+            print(i, intra_cb_threshold_bin, n_bins, breaker)
+            # print(intra_cb_dict_keys[breaker[:n]]-n_bins+intra_cb_threshold_bin+2+i)
             print(p1)
-            print(intra_cb_dict_values[breaker[:n]]-n_bins+intra_cb_threshold_bin+2+i)
+            # print(intra_cb_dict_values[breaker[:n]]-n_bins+intra_cb_threshold_bin+2+i)
             print(p2)
         p = np.concatenate((p1, p2))
 
@@ -681,7 +833,7 @@ def perform_intra_crystal_breakage_2d(mcg_old, prob, mineral_nr, search_bins,
         # If difference between initial bin and smallest formed bin during
         # intra_cb is lower than intra_cb_threshold_bin, no mcg can be formed
         # that would direcly fall in the residue bins.
-        if intra_cb_breaks[0] > intra_cb_threshold_bin:
+        if intra_cb_breaks_to_use[0] > intra_cb_threshold_bin:
             residue = p[p < n_bins]
             residue_count += len(residue)
             residue_new += np.sum(search_bins[residue])
@@ -689,8 +841,9 @@ def perform_intra_crystal_breakage_2d(mcg_old, prob, mineral_nr, search_bins,
         # Addition of small fraction of material that
         # gets 'lost' during intra_cb_breakage to residue.
         if verbose and len(p1) != 0:
-            print("ok", search_bins[i + intra_cb_threshold_bin + n_bins] * diffs_volumes[breaker[:n]])
-        residue_new += np.sum(search_bins[i + intra_cb_threshold_bin + n_bins] * diffs_volumes[breaker[:n]])
+            print("ok", search_bins[i + intra_cb_threshold_bin + n_bins] * diffs_volumes_to_use[breaker])
+        residue_new += np.sum(search_bins[i + intra_cb_threshold_bin + n_bins] * diffs_volumes_to_use[breaker])
+    # print("residue_intra_cb", residue_new, "for", np.sum(mcg_selected), "selected crystal(s) for mineral", mineral_nr, "in timestep", timestep)
 
 #     print("post-intra_cb volume:", np.sum(search_bins[-1500:] * mcg_new) + residue_new)
 #     print("residue_new:", residue_new)
@@ -727,7 +880,7 @@ def calculate_mcg_chem_residue(mcg_old, bins, volume_perc_change):
 
 
 def determine_intra_cb_dict(bin_label, ratio_search_bins, verbose=False,
-                            corr=1, return_arrays=True):
+                            corr=1, return_arrays=True, max_n_values=None):
     """Determines the relations for the intra-crystal breakage
     discretization.
 
@@ -764,29 +917,43 @@ def determine_intra_cb_dict(bin_label, ratio_search_bins, verbose=False,
     formed intra_cb_residue = bins[1156] * diffs_volumes
     """
     intra_cb_dict = {}
-    diffs = []
-    diffs_volumes = []
+    if max_n_values:
+        diffs = np.zeros(max_n_values, dtype=np.uint16)
+        diffs_volumes = np.zeros(max_n_values, dtype=np.float64)
+    else:
+        diffs = []
+        diffs_volumes = []
 
     specific_ratios = \
         ratio_search_bins[:bin_label] / ratio_search_bins[bin_label]
 
-    for i in range(bin_label-1, 0, -1):
-        y = 1 - specific_ratios[i]
+    # bin1 = np.arange(bin_label-1, 0, -1, dtype=np.uint16)
+    # i = np.arange(0, len(bin1), dtype=np.uint16)
+    # bin2_ratio = (1 - specific_ratios[bin1]).reshape(-1, 1)
+    # bin2 = np.argmax(bin2_ratio < specific_ratios, axis=1) - corr
+    # print(bin1, specific_ratios[bin1], bin2_ratio, bin2, bin1 - bin2)
+    # diffs = bin1 - bin2
+
+    for i, bin1 in enumerate(range(bin_label-1, 0, -1)):
+        bin2_ratio = 1 - specific_ratios[bin1]
         # Minus 1 for found bin so that volume sum of two new mcg
         # is bit less than 100%; remainder goes to residue later on.
-        found_bin = np.argmax(y < specific_ratios) - corr
-        if verbose:
-            print(i, specific_ratios[i], y, found_bin, i - found_bin)
-            print(specific_ratios[i] + specific_ratios[found_bin])
-        intra_cb_dict[i] = found_bin
-        diffs.append(i - found_bin)
-        diffs_volumes.append(1 - (specific_ratios[i] + specific_ratios[found_bin]))
-        if i - found_bin == 0 + corr:
+        bin2 = np.argmax(bin2_ratio < specific_ratios) - corr
+        if bin2 == -1:
             break
-
-    if return_arrays:
-        diffs = np.array(diffs, dtype=np.uint16)
-        diffs_volumes = np.array(diffs_volumes)
+        if verbose:
+            print(bin1, specific_ratios[bin1], bin2_ratio, bin2, bin1 - bin2)
+            print(specific_ratios[bin1] + specific_ratios[bin2])
+        intra_cb_dict[bin1] = bin2
+        if max_n_values:
+            diffs[i] = bin1 - bin2
+            diffs_volumes[i] = \
+                1 - (specific_ratios[bin1] + specific_ratios[bin2])
+        else:
+            diffs.append(bin1 - bin2)
+            diffs_volumes.append(1 - (specific_ratios[bin1] + specific_ratios[bin2]))
+        if (bin1 - bin2 <= 0 + corr):
+            break
 
     return intra_cb_dict, diffs, diffs_volumes
 
