@@ -3,6 +3,7 @@ import numba as nb
 import itertools
 from scipy.stats import truncnorm
 import time
+from fast_histogram import histogram1d, histogram2d
 
 # Deques support thread-safe, memory efficient appends and pops from
 # either side of the deque with approximately the same O(1) performance
@@ -154,9 +155,13 @@ class SedGen:
             tic2 = time.perf_counter()
         else:
             print("Counting interfaces...")
-        self.interface_counts = self.count_interfaces()
+        # self.interface_counts = count_interfaces(self.interface_pairs)
+        # self.interface_counts_matrix = \
+        #     convert_counted_interfaces_to_matrix(*self.interface_counts,
+        #                                          self.n_minerals)
         self.interface_counts_matrix = \
-            self.convert_counted_interfaces_to_matrix()
+            count_and_convert_interfaces_to_matrix(self.interface_array,
+                                                   self.n_minerals)
         if timed:
             toc2 = time.perf_counter()
             print(f" Done in{toc2 - tic2: 1.4f} seconds")
@@ -196,10 +201,13 @@ class SedGen:
         self.interface_location_prob = self.create_interface_location_prob()
         # The higher the strength of an interface, the less chance it
         # has to be broken.
-        self.interface_strengths_prob = self.get_interface_stregths_prob()
+        self.interface_strengths_prob = \
+            get_interface_strengths_prob(self.interface_proportions_normalized,
+                                         self.interface_pairs)
         # The bigger an interface is, the more chance it has to be
         # broken.
-        self.interface_size_prob = self.get_interface_size_prob()
+        self.interface_size_prob = \
+            get_interface_size_prob(self.crystal_size_array)
 
         print("\n---SedGen model initialization finished succesfully---")
 
@@ -509,33 +517,6 @@ class SedGen:
 
         return interface_array_corr, interface_frequencies_corr
 
-    def count_interfaces(self):
-        """Count number frequencies of crystal interfaces
-        https://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array/16973510"""
-
-        A = self.interface_pairs
-
-        b = np.ascontiguousarray(A).view(np.dtype((np.void, A.dtype.itemsize * A.shape[1])))
-        unq_a, unq_cnt = np.unique(b, return_counts=True)
-        unq_a = unq_a.view(A.dtype).reshape(-1, A.shape[1])
-
-        return unq_a, unq_cnt
-
-        # Numba does not yet support the return_counts keyword argument of
-        # np.unique, unfortunately.
-
-    def convert_counted_interfaces_to_matrix(self):
-        """Converts tuple resulting from count_interfaces call to numpy
-        matrix. Doesn't break if not all entries of the matrix are present
-        in the count.
-        """
-        count_matrix = np.zeros((self.n_minerals, self.n_minerals))
-
-        for index, count in zip(*self.interface_counts):
-            count_matrix[tuple(index)] = count
-
-        return count_matrix
-
     def create_interface_location_prob(self):
         """Creates an array descending and then ascending again to
         represent chance of inter crystal breakage of a poly crystalline
@@ -553,14 +534,6 @@ class SedGen:
         return chance
 
         # Not worth it adding numba to this function
-
-    # To Do: interface strengths matrix still needs to be added here
-    # instead of interface_proportions_normalized matrix.
-    def get_interface_stregths_prob(self):
-        interface_strengths = \
-            self.interface_proportions_normalized[self.interface_pairs[:, 0],
-                                                  self.interface_pairs[:, 1]]
-        return interface_strengths
 
     def calculate_actual_minerals_N(self):
         minerals_N_total_actual = [np.sum(self.interface_array == i)
@@ -633,23 +606,74 @@ class SedGen:
 
         return actual_volumes
 
-    def get_interface_size_prob(self):
-        interface_size_prob = np.min(create_pairs(self.crystal_size_array),
-                                     axis=1)
-        # Since this represents probabilities, we don't want zeros as a
-        # possible value but a 0 size bin exists.
-        # Therefore all values are raised by 1 to go around this issue.
-        interface_size_prob += 1
-
-        return interface_size_prob
-
     def check_properties(self):
-        # Check that number of crystals per mineral in interfacedstackarray equals
-        # the samen number in minerals_N
+        # Check that number of crystals per mineral in interface dstack
+        # array equals the same number in minerals_N
         assert all([np.sum(self.interface_array == x) for x in range(6)] -
                    self.minerals_N == [0] * self.n_minerals), "N is not the same in interface_array and minerals_N"
 
-        return "all good"
+        return "Number of crystals (N) is the same in interface_array and minerals_N"
+
+
+def count_interfaces(A):
+    """Count number frequencies of crystal interfaces
+    https://stackoverflow.com/questions/16970982/find-unique-rows-in-numpy-array/16973510"""
+
+    # A = self.interface_pairs
+
+    b = np.ascontiguousarray(A).view(np.dtype((np.void, A.dtype.itemsize * A.shape[1])))
+    unq_a, unq_cnt = np.unique(b, return_counts=True)
+    unq_a = unq_a.view(A.dtype).reshape(-1, A.shape[1])
+
+    return unq_a, unq_cnt
+
+    # Numba does not yet support the return_counts keyword argument of
+    # np.unique, unfortunately.
+
+
+def convert_counted_interfaces_to_matrix(unq_a, unq_cnt, n_minerals):
+    """Converts tuple resulting from count_interfaces call to numpy
+    matrix. Doesn't break if not all entries of the matrix are present
+    in the count.
+    """
+    count_matrix = np.zeros((n_minerals, n_minerals), dtype=np.int32)
+
+    for index, count in zip(unq_a, unq_cnt):
+        count_matrix[tuple(index)] = count
+
+    return count_matrix
+
+
+def count_and_convert_interfaces_to_matrix(pcg, n_minerals):
+    return histogram2d(pcg[:-1], pcg[1:],
+                       range=[[0, n_minerals], [0, n_minerals]],
+                       bins=n_minerals).astype(np.int32)
+
+
+def count_items(array, n_bins):
+    return histogram1d(array, bins=n_bins, range=[0, n_bins])
+
+
+# To Do: interface strengths matrix still needs to be added here
+# instead of interface_proportions_normalized matrix.
+def get_interface_strengths_prob(interface_strengths_matrix, interface_array):
+    interface_strengths = \
+        interface_strengths_matrix[interface_array[:-1],
+                                   interface_array[1:]]
+    return interface_strengths
+
+
+def get_interface_size_prob(crystal_size_array):
+    interface_size_prob = \
+        np.min(create_pairs(crystal_size_array),
+               axis=1)
+    # min_filter1d_valid_strided(crystal_size_array, 2)
+    # Since this represents probabilities, we don't want zeros as a
+    # possible value but a 0 size bin exists.
+    # Therefore all values are raised by 1 to go around this issue.
+    interface_size_prob += 1
+
+    return interface_size_prob
 
 
 @nb.njit(cache=True, nogil=True)
@@ -752,9 +776,26 @@ def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes,
         return modal_mineralogy
 
 
+def strided_app(a, L, S):  # Window len = L, Stride len/stepsize = S
+    """https://stackoverflow.com/questions/40084931/taking-subarrays-from-numpy-array-with-given-stride-stepsize/40085052#40085052"""
+    nrows = ((a.size-L)//S)+1
+    n = a.strides[0]
+    return np.lib.stride_tricks.as_strided(a, shape=(nrows,L), strides=(S*n,n))
+
+
+def min_filter1d_valid_strided(a, W):
+    """https://stackoverflow.com/questions/43288542/max-in-a-sliding-window-in-numpy-array"""
+    return strided_app(a, W, S=1).min(axis=1)
+
+
 @nb.njit(cache=True)
-def weighted_bin_count(a, w):
-    return np.bincount(a, weights=w)
+def weighted_bin_count(a, w, ml=None):
+    return np.bincount(a, weights=w, minlength=ml)
+
+
+@nb.njit(cache=True)
+def bin_count(a):
+    return np.bincount(a)
 
 
 @nb.njit(cache=True)
@@ -889,3 +930,12 @@ def calculate_search_bins_medians(search_bins):
 
 def calculate_ratio_search_bins(search_bins_medians):
     return search_bins_medians / search_bins_medians[-1]
+
+
+def expand_array(a, expand=1):
+    a_expanded = \
+        np.vstack(
+            (np.hstack((a, np.zeros((a.shape[0], expand)))),
+             np.zeros((expand, a.shape[1]+expand)))
+            )
+    return a_expanded
