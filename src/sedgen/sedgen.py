@@ -155,10 +155,7 @@ class SedGen:
             tic2 = time.perf_counter()
         else:
             print("Counting interfaces...")
-        # self.interface_counts = count_interfaces(self.interface_pairs)
-        # self.interface_counts_matrix = \
-        #     convert_counted_interfaces_to_matrix(*self.interface_counts,
-        #                                          self.n_minerals)
+
         self.interface_counts_matrix = \
             count_and_convert_interfaces_to_matrix(self.interface_array,
                                                    self.n_minerals)
@@ -526,14 +523,14 @@ class SedGen:
         This represents a linear function.
         Perhaps other functions might be added (spherical) to see the
         effects later on
+
+        # Not worth it adding numba to this function
         """
         size, corr = divmod(len(self.interface_array), 2)
         ranger = np.arange(size, 0, -1, dtype=np.uint32)
         chance = np.append(ranger, ranger[-2+corr::-1])
 
         return chance
-
-        # Not worth it adding numba to this function
 
     def calculate_actual_minerals_N(self):
         minerals_N_total_actual = [np.sum(self.interface_array == i)
@@ -826,32 +823,18 @@ def create_transitions_correctly(row, c, N_initial):
 
     # Absolute transition probabilities
     probs = row.copy().astype(np.int32)
-    # print(probs)
+
     # Number of transitions to obtain
     N = int(N_initial)
-    # print(N)
-    # Subtract correction
-    # N_initial -= corr
+
     # Normalize probabilities
     N_true = np.sum(probs)
-    # probs_norm = np.divide(probs, N_true)
-    # print(np.sum(probs), N_initial)
 
-    # probs_norm_sum = 1.0
-    # print(probs_norm_sum)
     # Initalize transition array
     transitions = np.zeros(shape=N, dtype=np.uint8)
 
     # For every transition
     for i in range(N):
-        # Create normalized probabilities
-        # probs_norm = probs / N_initial
-
-        # probs_norm /= probs_norm_sum
-
-        # Create cummulative probability distribution
-        # prob_norm_cumsum = np.cumsum(probs_norm)
-
         # Check were the random probability falls within the cumulative
         # probability distribution and select corresponding mineral
         choice = (c[i] < np.cumsum(probs / N_true)).argmax()
@@ -863,11 +846,8 @@ def create_transitions_correctly(row, c, N_initial):
         # have the exact number of absolute transitions based on the interface
         # proportions. Similar to a 'replace=False' in random sampling.
         probs[choice] -= 1
-        # probs_norm_sum = 1 - (1 / N_initial)
         N_true -= 1
-    # print(probs)
-    # print(N_true)
-    # print(probs_norm_sum)
+
     return transitions
 
 
@@ -881,11 +861,7 @@ def create_interface_array(minerals_N, transitions_per_mineral):
     # The time loss of working with a numpy array from the start is
     # around 10 s compared to the list implementation.
     test_array = np.zeros(int(np.sum(minerals_N)), dtype=np.uint8)
-
-#     test_array = [0]
-#     append_ = test_array.append
     counters = np.array([0] * len(minerals_N), dtype=np.uint32)
-#     array_size_range = range(test_array.shape[0])
     array_size_range = range(int(np.sum(minerals_N)))
 
     for i in array_size_range:
@@ -894,8 +870,6 @@ def create_interface_array(minerals_N, transitions_per_mineral):
             transitions_per_mineral[previous_state][counters[previous_state]]
 
         counters[previous_state] += 1
-#         if i % print_step == 0:
-#             print(i, end=" ")
 
     return test_array
 
