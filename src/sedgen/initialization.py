@@ -231,15 +231,38 @@ class SedGen:
         return interface_labels
 
     def initialize_csd(self, m, trunc_left=1/256, trunc_right=30):
+        """Initalizes the truncated lognormal crystal size distribution
+
+        Parameters:
+        -----------
+        m : int
+            Number specifying mineral class
+        trunc_left : float(optional)
+            Value to truncate lognormal distribution to on left side,
+            i.e. smallest values
+        trunc_right : float(optional)
+            Value to truncate lognormal distribution to on right side,
+            i.e. biggest values
+
+        Returns:
+        --------
+        csd : scipy.stats.truncnorm
+            Truncated lognormal crystal size distribution
+        """
+
         mean = np.log(self.csd_means[m])
         std = np.exp(self.csd_stds[m])
+
         if np.isinf(trunc_left):
             pass
         else:
             trunc_left = np.log(trunc_left)
+
         trunc_right = np.log(trunc_right)
         a, b = (trunc_left - mean) / std, (trunc_right - mean) / std
-        return truncnorm(loc=mean, scale=std, a=a, b=b)
+        csd = truncnorm(loc=mean, scale=std, a=a, b=b)
+
+        return csd
 
     def calculate_N_crystals(self, m, learning_rate=1000):
         """Request crystals from CSD until accounted modal volume is
@@ -329,6 +352,7 @@ class SedGen:
             return minerals_N_total, simulated_volume
 
     def calculate_number_proportions(self):
+        """Returns number proportions"""
         return gen.normalize(self.minerals_N).reshape(-1, 1)
 
     # To Do: add alpha factor to function to handle non-random interfaces
@@ -708,7 +732,6 @@ def create_transitions_correctly(row, c, N_initial):
 
 @nb.njit(cache=True)
 def create_interface_array(minerals_N, transitions_per_mineral):
-
     # It's faster to work with list here and convert it to array
     # afterwards. 1m13s + 20s compared to 1m45s
     # True, but the list implementation uses around 9 GB memory while

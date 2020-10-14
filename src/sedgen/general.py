@@ -33,6 +33,7 @@ def convert_counted_interfaces_to_matrix(unq_a, unq_cnt, n_minerals):
 
 
 def count_and_convert_interfaces_to_matrix(pcg, n_minerals):
+    """Counts frequencies of interfaces via fasthistogram module and subsequently converts them to matrix format."""
     return histogram2d(pcg[:-1], pcg[1:],
                        range=[[0, n_minerals], [0, n_minerals]],
                        bins=n_minerals).astype(np.int32)
@@ -101,7 +102,8 @@ def strided_app(a, L, S):  # Window len = L, Stride len/stepsize = S
     """https://stackoverflow.com/questions/40084931/taking-subarrays-from-numpy-array-with-given-stride-stepsize/40085052#40085052"""
     nrows = ((a.size-L)//S)+1
     n = a.strides[0]
-    return np.lib.stride_tricks.as_strided(a, shape=(nrows,L), strides=(S*n,n))
+    return \
+        np.lib.stride_tricks.as_strided(a, shape=(nrows, L), strides=(S*n, n))
 
 
 def min_filter1d_valid_strided(a, W):
@@ -111,11 +113,13 @@ def min_filter1d_valid_strided(a, W):
 
 @nb.njit(cache=True)
 def weighted_bin_count(a, w, ml=None):
+    """Returns weighted counts per bin"""
     return np.bincount(a, weights=w, minlength=ml)
 
 
 @nb.njit(cache=True)
 def bin_count(a):
+    """Returns counts per bin"""
     return np.bincount(a)
 
 
@@ -125,41 +129,68 @@ def normalize(data):
     return data / np.sum(data)
 
 
-def slow_count(data):
-    return np.unique(data, return_counts=True)
-
-
-def fast_count(data):
-    return np.bincount(data)
-
-
 def create_pairs(data):
+    """Creates pairs of crystals, i.e. interfaces"""
     return np.dstack((data[:-1],
                       data[1:]))[0]
 
 
 def initialize_size_bins(lower=-10, upper=5, n_bins=1500):
-        bins = [2.0**x for x in np.linspace(lower, upper, n_bins+1)]
-        return np.array(bins)
+    """Initializes n_bins size bins for binning of crystal sizes
+    through a geometric series of [2**lower, ..., 2**upper]
+
+    Parameters:
+    -----------
+    lower : float(optional)
+        Lower value of exponent; defaults to -10 which equals to a
+        crystal size of ca. 0.001 mm
+    upper : float(optional)
+        Upper value of exponent; defaults to 5 which equals to a crystal
+        size of 32 mm
+    n_bins : int(optional)
+        Number of size bins to use; defaults to 1500. Note that returned
+        values will be of size n_bins+1 as the bin_edges are returned.
+
+    Returns:
+    --------
+    bins : np.array
+        Bin edges of size n_bins+1
+    """
+
+    bins = [2.0**x for x in np.linspace(lower, upper, n_bins+1)]
+
+    return np.array(bins)
 
 
 def calculate_bins_medians(bins):
+    """Calculates the median value per two neighbouring bin edges,
+    i.e. per bin.
+    """
+
     bins_medians = bins[..., :-1] + 0.5 * np.diff(bins, axis=-1)
+
     return bins_medians
 
 
-def initialize_search_size_bins(n_bins):
-    search_size_bins = [2.0**x for x in np.linspace(-25,
-                                                    5,
+def initialize_search_size_bins(n_bins, lower=-25, upper=5):
+    """Initalizes bins used for searching the best fitting bin during
+    the intra_cb_dict initalization.
+    """
+    search_size_bins = [2.0**x for x in np.linspace(lower,
+                                                    upper,
                                                     n_bins*2-1)]
     return np.array(search_size_bins)
 
 
 def calculate_ratio_search_bins(search_bins_medians):
+    """Calculates the ratio between all search_bins_medians an the final
+    bin's median value."""
     return search_bins_medians / search_bins_medians[-1]
 
 
 def expand_array(a, expand=1):
+    """Expands an 2d array across both axes by adding zero rows and zero
+     colums."""
     a_expanded = \
         np.vstack(
             (np.hstack((a, np.zeros((a.shape[0], expand)))),
