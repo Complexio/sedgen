@@ -1,10 +1,9 @@
 import numpy as np
 import numba as nb
-
-from sedgen import sedgen
-from sedgen.binning import Bin
-
 import time
+
+from sedgen import general as gen
+
 
 """
 TODO:
@@ -181,7 +180,8 @@ class Weathering:
             self.create_bins_medians_matrix()
 
         # Volume change array
-        self.volume_change_matrix = -np.diff(self.volume_bins_medians_matrix, axis=0)
+        self.volume_change_matrix = -np.diff(self.volume_bins_medians_matrix,
+                                             axis=0)
 
         # Negative bin array thresholds
         self.negative_volume_thresholds = \
@@ -239,7 +239,7 @@ class Weathering:
             # Perform weathering operations
             for operation in operations:
                 if operation == "intra_cb":
-                    # To Do: Insert check on timestep or n_mcg to
+                    # TODO: Insert check on timestep or n_mcg to
                     # perform intra_cb_breakage per mineral and per bin
                     # or in one operation for all bins and minerals.
 
@@ -250,21 +250,18 @@ class Weathering:
                     # Add new mcg to mcg_chem_weath array to be able to
                     # use newly formed mcg during chemical weathering of
                     # mcg
-                    # self.mcg_chem_weath[0] += self.mcg
                     if display_mcg_sums:
                         print("mcg sum over minerals after intra_cb but before inter_cb", np.sum(np.sum(self.mcg, axis=2), axis=0))
                     # Account for residue
                     self.residue[step] = residue
                     self.residue_count[step] = residue_count
-                    # print("after intra_cb mcg_vol:", np.sum(self.bins * mcg_broken))
-                    # print("after intra_cb residue:", np.sum(residue))
                     toc_intra_cb = time.perf_counter()
 
                 elif operation == "inter_cb":
                     # inter-crystal breakage
                     self.pcgs_new, self.crystal_size_array_new,\
-                    self.interface_constant_prob_new, \
-                    self.pcg_chem_weath_array_new, self.mcg = \
+                        self.interface_constant_prob_new, \
+                        self.pcg_chem_weath_array_new, self.mcg = \
                         self.inter_crystal_breakage(step)
                     if display_mcg_sums:
                         print("mcg sum after inter_cb", np.sum(np.sum(self.mcg, axis=2), axis=0))
@@ -274,12 +271,15 @@ class Weathering:
                     if not self.pcgs_new:
                         print(f"After {step} steps all pcg have been broken down to mcg")
                         return self.pcgs_new, self.mcg, self.pcg_additions, \
-            self.mcg_additions, self.pcg_comp_evolution, \
-            self.pcg_size_evolution, self.interface_counts, \
-            self.crystal_size_array_new, self.mcg_broken_additions, \
-            self.residue_additions, self.residue_count_additions, \
-            self.pcg_chem_residue_additions, self.mcg_chem_residue_additions, \
-            self.mass_balance, self.mcg_evolution
+                            self.mcg_additions, self.pcg_comp_evolution, \
+                            self.pcg_size_evolution, self.interface_counts, \
+                            self.crystal_size_array_new, \
+                            self.mcg_broken_additions, \
+                            self.residue_additions, \
+                            self.residue_count_additions, \
+                            self.pcg_chem_residue_additions, \
+                            self.mcg_chem_residue_additions, \
+                            self.mass_balance, self.mcg_evolution
 
                 # To Do: Provide option for different speeds of chemical
                 # weathering per mineral class. This could be done by
@@ -416,7 +416,8 @@ class Weathering:
             Newly formed list of poly-crystalline grains which are
             represented as seperate numpy arrays
         crystal_size_array_new: list of np.array(uint16)
-            Newly formed list of the crystal sizes of the pcgs which are again represented by numpy arrays
+            Newly formed list of the crystal sizes of the pcgs which are
+            again represented by numpy arrays
         interface_constant_prob_new : list of np.array(float64)
             Newly formed list of the inter-crystal breakage
             probabilities for the present interfaces between crystals in
@@ -449,7 +450,11 @@ class Weathering:
                     for n in range(self.n_timesteps)]
     #         interface_indices = List()
 
-        for i, (pcg, prob, csize, chem) in enumerate(zip(pcgs_old, interface_constant_prob_old, crystal_size_array_old, pcg_chem_weath_array_old)):
+        for i, (pcg, prob, csize, chem) in enumerate(
+            zip(pcgs_old,
+                interface_constant_prob_old,
+                crystal_size_array_old,
+                pcg_chem_weath_array_old)):
 
             pcg_length = pcg.size
 
@@ -466,7 +471,7 @@ class Weathering:
                     calculate_normalized_probability(location_prob, prob)
 
             else:
-                probability_normalized = sedgen.normalize(prob)
+                probability_normalized = gen.normalize(prob)
 
             # Select interface to break pcg on
             interface = select_interface(i, probability_normalized, c)
@@ -494,25 +499,24 @@ class Weathering:
                     pcg_chem_weath_array_new_append(chem[:interface])
                     interface_constant_prob_new_append(prob[:interface-1])
                 else:
-                    mcg_temp[chem[interface-1]][pcg[interface-1]].append(csize[interface-1])
+                    mcg_temp[chem[interface-1]][pcg[interface-1]]\
+                        .append(csize[interface-1])
 
                 # Evaluate second new pcg
-                if pcg_length - interface != 1:  # This implies that len(new_prob) != 0
+                if pcg_length - interface != 1:
                     pcgs_new_append(pcg[interface:])
                     crystal_size_array_new_append(csize[interface:])
                     pcg_chem_weath_array_new_append(chem[interface:])
                     interface_constant_prob_new_append(prob[interface:])
                 else:
-                    mcg_temp[chem[interface]][pcg[interface]].append(csize[interface])
-                    # print(mcg_temp)
+                    mcg_temp[chem[interface]][pcg[interface]]\
+                        .append(csize[interface])
 
                 # Remove interface from interface_counts_matrix
                 # Faster to work with matrix than with list and post-loop
                 # operations as with the mcg counting
-                # print(interface)
-                # print(pcg[interface-1], pcg[interface])
                 self.interface_counts[pcg[interface-1], pcg[interface]] -= 1
-        #             interface_indices.append((pcg[interface-1], pcg[interface]))
+                # interface_indices.append((pcg[interface-1], pcg[interface]))
 
         # Add counts from mcg_temp to mcg
         mcg_temp_matrix = np.zeros((self.n_timesteps,
@@ -630,7 +634,11 @@ class Weathering:
             np.zeros((self.n_minerals, self.n_minerals), dtype=np.int32)
         residue_per_mineral = np.zeros(self.n_minerals, dtype=np.float64)
 
-        for i, (pcg, prob, csize, chem_old) in enumerate(zip(self.pcgs_new, self.interface_constant_prob_new, self.crystal_size_array_new, self.pcg_chem_weath_array_new)):
+        for i, (pcg, prob, csize, chem_old) in enumerate(
+            zip(self.pcgs_new,
+                self.interface_constant_prob_new,
+                self.crystal_size_array_new,
+                self.pcg_chem_weath_array_new)):
 
             # Perform weathering
             chem = chem_old + shift
@@ -666,11 +674,11 @@ class Weathering:
                 # remaining_pairs = sedgen.create_pairs(pcg_remaining)
 
                 old_interfaces = \
-                    sedgen.count_and_convert_interfaces_to_matrix(
+                    gen.count_and_convert_interfaces_to_matrix(
                         pcg, self.n_minerals)
 
                 new_interfaces = \
-                    sedgen.count_and_convert_interfaces_to_matrix(
+                    gen.count_and_convert_interfaces_to_matrix(
                         pcg_remaining, self.n_minerals)
 
                 diff_interfaces = old_interfaces - new_interfaces
@@ -678,9 +686,9 @@ class Weathering:
                 interface_counts_matrix_diff += diff_interfaces
 
                 interface_size_prob = \
-                    sedgen.get_interface_size_prob(csize_remaining)
+                    gen.get_interface_size_prob(csize_remaining)
                 interface_strength_prob = \
-                    sedgen.get_interface_strengths_prob(
+                    gen.get_interface_strengths_prob(
                         self.interface_proportions_normalized,
                         pcg_remaining)
 
@@ -699,9 +707,9 @@ class Weathering:
                                                 csize_dissolved]
 
             residue_1 = \
-                sedgen.weighted_bin_count(pcg_dissolved,
-                                          volumes_old_selected,
-                                          self.n_minerals)
+                gen.weighted_bin_count(pcg_dissolved,
+                                       volumes_old_selected,
+                                       self.n_minerals)
 
             # 2. Residue from material being weathered
             dissolved_volume_selected = \
@@ -709,9 +717,9 @@ class Weathering:
                                           pcg_remaining,
                                           csize_remaining]
             residue_2 = \
-                sedgen.weighted_bin_count(pcg_remaining,
-                                          dissolved_volume_selected,
-                                          self.n_minerals)
+                gen.weighted_bin_count(pcg_remaining,
+                                       dissolved_volume_selected,
+                                       self.n_minerals)
 
             # Add residue together per mineral
             residue_per_mineral += residue_1 + residue_2
@@ -720,7 +728,9 @@ class Weathering:
         interface_counts_matrix_new = \
             self.interface_counts + interface_counts_matrix_diff
 
-        return pcgs_new, crystal_size_array_new, interface_constant_prob_new, pcg_chem_weath_array_new, residue_per_mineral, interface_counts_matrix_new
+        return pcgs_new, crystal_size_array_new, interface_constant_prob_new, \
+            pcg_chem_weath_array_new, residue_per_mineral, \
+            interface_counts_matrix_new
 
     def chemical_weathering_pcg(self, shift=1):
         """Not taking into account that crystals on the inside of the
@@ -738,7 +748,8 @@ class Weathering:
 
         chem_concat = chem_concat_old + 1
 
-        thresholds_concat = self.negative_volume_thresholds[chem_concat, pcg_concat]
+        thresholds_concat = \
+            self.negative_volume_thresholds[chem_concat, pcg_concat]
 
         remaining_crystals = csize_concat >= thresholds_concat
         dissolved_crystals = np.where(csize_concat < thresholds_concat)
@@ -752,7 +763,7 @@ class Weathering:
             np.array_split(remaining_crystals, np.cumsum(pcg_lengths[:-1]))
 
         pcg_lengths_remaining = \
-            np.array([len(pcg[pcg == True]) for pcg in pcg_filtered],
+            np.array([len(pcg[pcg]) for pcg in pcg_filtered],
                      dtype=np.uint32)
 
         pcg_lengths_cumul = np.cumsum(pcg_lengths_remaining)
@@ -780,7 +791,9 @@ class Weathering:
         mcg_csize_unq, mcg_csize_ind, mcg_csize_cnt = \
             np.unique(csize_to_mcg, return_index=True, return_counts=True)
 
-        self.mcg[chem_to_mcg[mcg_csize_ind], pcg_to_mcg[mcg_csize_ind], mcg_csize_unq] += mcg_csize_cnt.astype(np.uint32)
+        self.mcg[chem_to_mcg[mcg_csize_ind],
+                 pcg_to_mcg[mcg_csize_ind],
+                 mcg_csize_unq] += mcg_csize_cnt.astype(np.uint32)
 
         # Interfaces counts
         pcg_concat_for_interfaces = \
@@ -789,7 +802,7 @@ class Weathering:
                       self.n_minerals)
 
         interface_counts_matrix_new = \
-            sedgen.count_and_convert_interfaces_to_matrix(
+            gen.count_and_convert_interfaces_to_matrix(
                 pcg_concat_for_interfaces, self.n_minerals)
 
         # Interface probability calculations
@@ -801,13 +814,13 @@ class Weathering:
                       -1)
 
         interface_size_prob_concat = \
-            sedgen.get_interface_size_prob(csize_concat_for_interfaces)
+            gen.get_interface_size_prob(csize_concat_for_interfaces)
         interface_size_prob_concat = \
             interface_size_prob_concat[interface_size_prob_concat > 0]
 
         interface_strength_prob_concat = \
-            sedgen.get_interface_strengths_prob(
-                sedgen.expand_array(self.interface_proportions_normalized),
+            gen.get_interface_strengths_prob(
+                gen.expand_array(self.interface_proportions_normalized),
                 pcg_concat_for_interfaces)
         interface_strength_prob_concat = \
             interface_strength_prob_concat[interface_strength_prob_concat > 0]
@@ -816,7 +829,9 @@ class Weathering:
             interface_size_prob_concat / interface_strength_prob_concat
 
         prob_remaining_list = \
-            np.array_split(prob_remaining, pcg_lengths_cumul_zero_deleted[:-1] - np.arange(1, len(pcg_remaining_list) - count_0))
+            np.array_split(
+                prob_remaining, pcg_lengths_cumul_zero_deleted[:-1] -
+                np.arange(1, len(pcg_remaining_list) - count_0))
 
         # Residue accounting
         pcg_dissolved = pcg_concat[dissolved_crystals]
@@ -829,9 +844,9 @@ class Weathering:
                                             csize_dissolved]
 
         residue_1 = \
-            sedgen.weighted_bin_count(pcg_dissolved,
-                                      volumes_old_selected,
-                                      self.n_minerals)
+            gen.weighted_bin_count(pcg_dissolved,
+                                   volumes_old_selected,
+                                   self.n_minerals)
 
         # 2. Residue from material being weathered
         dissolved_volume_selected = \
@@ -839,9 +854,9 @@ class Weathering:
                                       pcg_remaining,
                                       csize_remaining]
         residue_2 = \
-            sedgen.weighted_bin_count(pcg_remaining,
-                                      dissolved_volume_selected,
-                                      self.n_minerals)
+            gen.weighted_bin_count(pcg_remaining,
+                                   dissolved_volume_selected,
+                                   self.n_minerals)
 
         # Add residue together per mineral
         residue_per_mineral = residue_1 + residue_2
@@ -857,7 +872,9 @@ class Weathering:
         interface_constant_prob_new = \
             [prob for prob in prob_remaining_list if prob.size != 0]
 
-        return pcgs_new, crystal_size_array_new, interface_constant_prob_new, pcg_chem_weath_array_new, residue_per_mineral, interface_counts_matrix_new
+        return pcgs_new, crystal_size_array_new, interface_constant_prob_new, \
+            pcg_chem_weath_array_new, residue_per_mineral, \
+            interface_counts_matrix_new
 
     def create_bins_matrix(self):
         """Create the matrix holding the arrays with bins which each
@@ -870,15 +887,15 @@ class Weathering:
                       for i in range(self.n_minerals)]
                      for x in range(self.n_timesteps)])
 
-        volume_bins_matrix = sedgen.calculate_volume_sphere(size_bins_matrix)
+        volume_bins_matrix = gen.calculate_volume_sphere(size_bins_matrix)
 
         return size_bins_matrix, volume_bins_matrix
 
     def create_bins_medians_matrix(self):
         size_bins_medians_matrix = \
-            sedgen.calculate_bins_medians(self.size_bins_matrix)
+            gen.calculate_bins_medians(self.size_bins_matrix)
         volume_bins_medians_matrix = \
-            sedgen.calculate_bins_medians(self.volume_bins_matrix)
+            gen.calculate_bins_medians(self.volume_bins_matrix)
 
         return size_bins_medians_matrix, volume_bins_medians_matrix
 
@@ -889,18 +906,19 @@ class Weathering:
                      for x in range(self.n_timesteps)])
 
         search_volume_bins_matrix = \
-            sedgen.calculate_volume_sphere(search_size_bins_matrix)
+            gen.calculate_volume_sphere(search_size_bins_matrix)
 
         return search_size_bins_matrix, search_volume_bins_matrix
 
     def create_search_bins_medians_matrix(self):
         search_size_bins_medians_matrix = \
-            sedgen.calculate_bins_medians(self.search_size_bins_matrix)
+            gen.calculate_bins_medians(self.search_size_bins_matrix)
 
         search_volume_bins_medians_matrix = \
-            sedgen.calculate_bins_medians(self.search_volume_bins_matrix)
+            gen.calculate_bins_medians(self.search_volume_bins_matrix)
 
-        return search_size_bins_medians_matrix, search_volume_bins_medians_matrix
+        return search_size_bins_medians_matrix, \
+            search_volume_bins_medians_matrix
 
     def create_ratio_search_bins_matrix(self):
         ratio_search_size_bins_matrix = \
@@ -925,20 +943,25 @@ class Weathering:
             print(n)
             for m in range(self.n_minerals):
                 intra_cb_breaks_array = \
-                    np.zeros((self.n_bins_medians - self.intra_cb_threshold_bin_matrix[n, m],
-                             len(self.intra_cb_breaks)),
-                             dtype=np.uint16)
+                    np.zeros(
+                        (self.n_bins_medians -
+                         self.intra_cb_threshold_bin_matrix[n, m],
+                         len(self.intra_cb_breaks)),
+                        dtype=np.uint16)
                 diffs_volumes_array = \
-                    np.zeros((self.n_bins_medians - self. intra_cb_threshold_bin_matrix[n, m],
-                             len(self.intra_cb_breaks)),
-                             dtype=np.float64)
+                    np.zeros(
+                        (self.n_bins_medians -
+                         self.intra_cb_threshold_bin_matrix[n, m],
+                         len(self.intra_cb_breaks)),
+                        dtype=np.float64)
 
                 for i, b in \
                     enumerate(range(self.intra_cb_threshold_bin_matrix[n, m] +
                                     self.n_bins_medians,
                                     self.n_bins_medians*2)):
                     intra_cb_breaks_array[i], diffs_volumes_array[i] = \
-                        determine_intra_cb_dict_array_version(b, self.ratio_search_volume_bins_matrix[n, m],
+                        determine_intra_cb_dict_array_version(
+                            b, self.ratio_search_volume_bins_matrix[n, m],
                             max_n_values=len(self.intra_cb_breaks))
 
                 intra_cb_breaks_matrix[n, m] = intra_cb_breaks_array
@@ -1056,35 +1079,6 @@ def perform_intra_crystal_breakage_2d(mcg_old, prob, mineral_nr, timestep,
     return mcg_new, residue_new, residue_count
 
 
-@nb.njit(cache=True)
-def calculate_mcg_chem_residue(mcg_old, bins, volume_perc_change):
-    """Calculates the residue produced during chemical weathering coming
-    from mono-crystalline grains.
-
-    Parameters:
-    -----------
-    mcg_old : np.array
-        Old mcg array/matrix
-    bins : np.array
-        Bin values to use
-    volume_perc_change : float
-        Volume percentage change, determined by 'shift' and
-        "volume_perc_change_unit"
-
-    Returns:
-    --------
-    residue_per_mineral : np.array
-        Amount of residue formed per mineral class
-    """
-    # Keep track of residue formed by shifting bins
-    residue_per_mineral = \
-        np.sum(mcg_old[:, 1:] * bins[1:], axis=1) * (1 - volume_perc_change)
-    # Add total volume of first bin to residue
-    residue_per_mineral += mcg_old[:, 0] * bins[0]
-
-    return residue_per_mineral
-
-
 def determine_intra_cb_dict(bin_label, ratio_search_bins, verbose=False,
                             corr=1, return_arrays=True, max_n_values=None):
     """Determines the relations for the intra-crystal breakage
@@ -1109,7 +1103,8 @@ def determine_intra_cb_dict(bin_label, ratio_search_bins, verbose=False,
         of broken mcg
     diffs_volumes : np.array
         Relative differences in volume between the original mcg and the
-        sum of part 1 and part 2 of broken mcg. This thus represents the percentage of the formed intra_cb residue with regard to the
+        sum of part 1 and part 2 of broken mcg. This thus represents the
+        percentage of the formed intra_cb residue with regard to the
         original mcg's volume.
 
     Example:
