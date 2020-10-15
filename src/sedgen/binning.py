@@ -1,6 +1,6 @@
 import numpy as np
 
-from sedgen.sedgen import calculate_volume_sphere
+from sedgen.general import calculate_volume_sphere
 
 
 class Bin:

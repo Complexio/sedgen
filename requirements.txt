@@ -21,4 +21,5 @@ pandas
 scipy==1.5
 matplotlib
 sphinx<2
+fast_histogram
 

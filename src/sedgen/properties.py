@@ -8,19 +8,20 @@ import re
 # restricted database with only the elements needed for the minerals
 # with regard to SedGen could be the fastest short-term solution.
 
+
 class Mineral:
 
     def __init__(self):
 
-        self.molar_volume =
-        self.molar_mass =
-        self.mineral_formula =
-        self.weathering_rate =
+        self.molar_volume = 0
+        self.molar_mass = 0
+        self.mineral_formula = 0
+        self.weathering_rate = 0
 
-        self.mineral_strength =
-        self.mineral_density =
+        self.mineral_strength = 0
+        self.mineral_density = 0
 
-        self.interface_strength =
+        self.interface_strength = 0
 
         elements = {"Si": {"molar_volume": 0.000012054,
                            "density": 2.3290,
@@ -37,15 +38,15 @@ class Quartz(Mineral):
         Mineral.__init__(self)
 
         self.mineral_formula = "SiO2"
-        self.molar_volume =
-        self.mineral_density =
-        self.molar_mass =
+        self.molar_volume = 0
+        self.mineral_density = 0
+        self.molar_mass = 0
 
-        self.weathering_rate =
+        self.weathering_rate = 0
 
-        self.mineral_strength =
+        self.mineral_strength = 0
 
-        self.interface_strength =
+        self.interface_strength = 0
 
 
 def get_elements(formula):
@@ -54,6 +55,6 @@ def get_elements(formula):
     return elements
 
 
-def calculate_molar_volume(mineral):
+def calculate_molar_volume(mineral, weights):
 
     return sum((weights[e] * int(i)) for e, i in mineral)
