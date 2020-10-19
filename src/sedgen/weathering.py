@@ -85,7 +85,7 @@ class Weathering:
 
         if self.enable_interface_location_prob:
             # Calculate interface_location_prob array for standard
-            # configurations of pcgs so that can be looked up later on
+            # configurations of pcgs so that they can be looked up later on
             # instead of being calculated ad hoc.
             self.standard_prob_loc_cases = \
                 np.array([create_interface_location_prob(
@@ -162,6 +162,9 @@ class Weathering:
             np.zeros((self.n_timesteps, self.n_minerals, self.n_bins_medians),
                      dtype=np.uint32)
 
+        # --------------------------------------------------------------
+        # MOVE TO INITIALIZATION
+
         # Determine intra-crystal breakage discretization 'rules'
         self.intra_cb_dict, self.intra_cb_breaks, self.diffs_volumes = \
             determine_intra_cb_dict(self.n_bins_medians * 2 - 2,
@@ -216,6 +219,7 @@ class Weathering:
             self.diffs_volumes_matrix = self.create_intra_cb_dicts_matrix()
 
         self.mass_balance = np.zeros(self.n_timesteps, dtype=np.float64)
+        # --------------------------------------------------------------
 
     def weathering(self,
                    operations=["intra_cb",

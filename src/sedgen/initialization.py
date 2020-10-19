@@ -4,11 +4,6 @@ import itertools
 from scipy.stats import truncnorm
 import time
 
-# Deques support thread-safe, memory efficient appends and pops from
-# either side of the deque with approximately the same O(1) performance
-# in either direction.
-from collections import deque
-
 from sedgen import general as gen
 
 
@@ -16,12 +11,15 @@ from sedgen import general as gen
     - Provide option to specify generated minerals based on a number
       instead of filling up a given volume. In the former case, the
       simulated volume attribute also has more meaning.
+    - Learning rate should be set semi-automatically. Based on smallest
+      mean crystal size perhaps?
 """
 
 
 class SedGen:
     """Initializes a SedGen model based on fundamental properties of
-    modal mineralogy, interfacial composition and crystal size statistics
+    modal mineralogy, interfacial composition and crystal size
+    statistics
 
     Parameters:
     -----------
@@ -43,20 +41,11 @@ class SedGen:
         mineral class; defaults to 1000
     timed : bool (optional)
         Show timings of various initialization steps; defaults to False
-    fast_calc : bool (optional)
-        Whether to use the fast but less accurate method of initializing
-        a model, defaults to True
-    binned : bool (optional)
-        Whether to bin crystal sizes; defaults to True
-    volume_binned : bool (optional)
-        Whether to use bins based on volumes of crystal sizes;
-        defaults to False
     """
 
     def __init__(self, minerals, parent_rock_volume, modal_mineralogy,
                  csd_means, csd_stds, interfacial_composition=None,
-                 learning_rate=1000, timed=False, fast_calc=True, binned=True,
-                 volume_binned=False):
+                 learning_rate=1000, timed=False):
         print("---SedGen model initialization started---\n")
 
         print("Initializing modal mineralogy...")
@@ -64,9 +53,6 @@ class SedGen:
         self.n_minerals = len(self.minerals)
         self.parent_rock_volume = parent_rock_volume
         self.modal_mineralogy = modal_mineralogy
-        self.fast_calc = fast_calc
-        self.binned = binned
-        self.volume_binned = volume_binned
 
         # Assert that modal mineralogy proportions sum up to unity.
         assert np.isclose(np.sum(modal_mineralogy), 1.0), \
@@ -82,46 +68,41 @@ class SedGen:
 
         self.csds = np.array([self.initialize_csd(m)
                               for m in range(self.n_minerals)])
-        if self.binned:
-            self.size_bins = \
-                gen.initialize_size_bins()
-            self.size_bins_medians = \
-                gen.calculate_bins_medians(self.size_bins)
 
-            self.n_bins = len(self.size_bins)
-            self.n_bins_medians = self.n_bins - 1
+        self.size_bins = \
+            gen.initialize_size_bins()
+        self.size_bins_medians = \
+            gen.calculate_bins_medians(self.size_bins)
 
-            self.volume_bins = \
-                gen.calculate_volume_sphere(self.size_bins)
-            self.volume_bins_medians = \
-                gen.calculate_bins_medians(self.volume_bins)
+        self.n_bins = len(self.size_bins)
+        self.n_bins_medians = self.n_bins - 1
 
-            self.search_size_bins = \
-                gen.initialize_search_size_bins(self.n_bins)
-            self.search_size_bins_medians = \
-                gen.calculate_bins_medians(self.search_size_bins)
-            self.ratio_search_size_bins = \
-                gen.calculate_ratio_search_bins(self.search_size_bins_medians)
+        self.volume_bins = \
+            gen.calculate_volume_sphere(self.size_bins)
+        self.volume_bins_medians = \
+            gen.calculate_bins_medians(self.volume_bins)
 
-            self.search_volume_bins = \
-                gen.calculate_volume_sphere(self.search_size_bins)
-            self.search_volume_bins_medians = \
-                gen.calculate_bins_medians(self.search_volume_bins)
-            self.ratio_search_volume_bins = \
-                gen.calculate_ratio_search_bins(
-                    self.search_volume_bins_medians)
+        self.search_size_bins = \
+            gen.initialize_search_size_bins(self.n_bins)
+        self.search_size_bins_medians = \
+            gen.calculate_bins_medians(self.search_size_bins)
+        self.ratio_search_size_bins = \
+            gen.calculate_ratio_search_bins(self.search_size_bins_medians)
+
+        self.search_volume_bins = \
+            gen.calculate_volume_sphere(self.search_size_bins)
+        self.search_volume_bins_medians = \
+            gen.calculate_bins_medians(self.search_volume_bins)
+        self.ratio_search_volume_bins = \
+            gen.calculate_ratio_search_bins(
+                self.search_volume_bins_medians)
 
         print("Simulating mineral occurences...", end=" ")
         if timed:
             tic0 = time.perf_counter()
-        if not self.fast_calc:
-            self.minerals_N, self.simulated_volume, \
-                crystal_sizes_per_mineral = \
-                self.create_N_crystals(learning_rate=learning_rate)
-            # print(self.modal_volume / (self.simulated_volume / 1e9))
-        else:
-            self.minerals_N, self.simulated_volume = \
-                self.create_N_crystals(learning_rate=learning_rate)
+        self.minerals_N, self.simulated_volume, crystal_sizes_per_mineral = \
+            self.create_N_crystals(learning_rate=learning_rate)
+
         self.N_crystals = np.sum(self.minerals_N)
 
         if timed:
@@ -144,15 +125,12 @@ class SedGen:
         self.interface_frequencies = \
             self.perform_interface_frequencies_correction()
 
-        if not self.fast_calc:
-            transitions_per_mineral = \
-                self.create_transitions_per_mineral_correctly()
-        else:
-            transitions_per_mineral = self.create_transitions()
+        transitions_per_mineral = \
+            self.create_transitions_per_mineral_correctly()
 
         self.interface_array = \
             create_interface_array(self.minerals_N, transitions_per_mineral)
-        self.interface_pairs = gen.create_pairs(self.interface_array)
+        # self.interface_pairs = gen.create_pairs(self.interface_array)
         if timed:
             toc1 = time.perf_counter()
             print(f" Done in{toc1 - tic1: 1.4f} seconds")
@@ -173,17 +151,13 @@ class SedGen:
             print(f" Done in{toc2 - tic2: 1.4f} seconds")
 
         print("Correcting interface arrays for consistency...")
-        if not self.fast_calc:
-            self.interface_array, self.interface_counts_matrix = \
-                self.perform_double_interface_array_correction()
-            self.interface_pairs = gen.create_pairs(self.interface_array)
+        self.interface_array, self.interface_counts_matrix = \
+            self.perform_double_interface_array_correction()
+
         print("Initializing crystal size array...", end=" ")
         if timed:
             tic3 = time.perf_counter()
         self.minerals_N_actual = self.calculate_actual_minerals_N()
-        if self.fast_calc:
-            crystal_sizes_per_mineral = \
-                self.create_crystal_size_arrays()
 
         self.crystal_size_array = \
             self.fill_main_cystal_size_array(crystal_sizes_per_mineral)
@@ -267,7 +241,9 @@ class SedGen:
     def calculate_N_crystals(self, m, learning_rate=1000):
         """Request crystals from CSD until accounted modal volume is
         filled.
-        Idea: use pdf to speed up process
+
+        Idea: use pdf to speed up process --> This can only be done if
+        the CSD is converted to a 'crystal volume distribution'.
 
         From this, the number of crystals per mineral class will be
         known while also giving the total number of crystals (N) in 1 m³
@@ -275,10 +251,10 @@ class SedGen:
         """
         total_volume_mineral = 0
         requested_volume = self.modal_volume[m]
-        crystals = deque()
+        crystals = []
         crystals_append = crystals.append
-        crystals_total = deque()
-        crystals_total_append = crystals_total.append
+        crystals_total = 0
+        # crystals_total_append = crystals_total.append
 
         rs = 0
         while total_volume_mineral < requested_volume:
@@ -286,54 +262,30 @@ class SedGen:
             crystals_requested = \
                 int(diff / (self.modal_mineralogy[m] * learning_rate)) + 1
 
-            crystals_total_append(crystals_requested)
+            crystals_total += crystals_requested
             crystals_to_add = \
                 np.exp(self.csds[m].rvs(size=crystals_requested,
                                         random_state=rs))
 
-            if self.volume_binned:
-                if not self.fast_calc:
-                    crystals_append(
-                        gen.calculate_volume_sphere(crystals_to_add))
-                total_volume_mineral += \
-                    np.sum(crystals[rs])
-            else:
-                if not self.fast_calc:
-                    crystals_append(crystals_to_add)
-                total_volume_mineral += \
-                    np.sum(gen.calculate_volume_sphere(crystals_to_add))
+            crystals_append(gen.calculate_volume_sphere(crystals_to_add))
+            total_volume_mineral += np.sum(crystals[rs])
+
             rs += 1
 
-        if not self.fast_calc:
-            crystals_array = np.concatenate(crystals)
+        crystals_array = np.concatenate(crystals)
 
-            if self.binned:
-                if self.volume_binned:
-                    crystals_binned = \
-                        (np.searchsorted(self.volume_bins,
-                                         crystals_array) - 1).astype(np.uint16)
+        crystals_binned = \
+            (np.searchsorted(self.volume_bins,
+                             crystals_array) - 1).astype(np.uint16)
 
-                # Capture and correct crystals that fall outside
-                # the leftmost bin as they end up as bin 0 but since 1 gets
-                # subtracted from all bins they end up as the highest value
-                # of np.uint16 as negative values are not possible
+        # Capture and correct crystals that fall outside
+        # the leftmost bin as they end up as bin 0 but since 1 gets
+        # subtracted from all bins they end up as the highest value
+        # of np.uint16 as negative values are not possible
+        crystals_binned[crystals_binned > self.n_bins] = 0
 
-                else:
-                    crystals_binned = \
-                        (np.searchsorted(self.size_bins,
-                                         crystals_array) - 1).astype(np.uint16)
-
-                crystals_binned[crystals_binned > self.n_bins] = 0
-
-                return crystals_total, np.sum(crystals_total), \
-                    total_volume_mineral, crystals_binned
-
-            else:
-                return crystals_total, np.sum(crystals_total), \
-                    total_volume_mineral, crystals_array
-        else:
-            return crystals_total, np.sum(crystals_total), \
-                total_volume_mineral
+        return crystals_total, np.sum(crystals_total), \
+            total_volume_mineral, crystals_binned
 
     def create_N_crystals(self, learning_rate=1000):
         minerals_N = {}
@@ -344,12 +296,9 @@ class SedGen:
                 self.calculate_N_crystals(m=m, learning_rate=learning_rate)
         minerals_N_total = np.array([N[1] for N in minerals_N.values()])
         simulated_volume = np.array([N[2] for N in minerals_N.values()])
-        if not self.fast_calc:
-            crystals = [N[3] for N in minerals_N.values()]
+        crystals = [N[3] for N in minerals_N.values()]
 
-            return minerals_N_total, simulated_volume, crystals
-        else:
-            return minerals_N_total, simulated_volume
+        return minerals_N_total, simulated_volume, crystals
 
     def calculate_number_proportions(self):
         """Returns number proportions"""
@@ -396,20 +345,16 @@ class SedGen:
                                                  random_seed=911):
         """Correction 'corr' is implemented to obtain a bit more
         possibilities than needed to make sure there are enough values
-        to fill the interface array"""
+        to fill the interface array later on."""
         transitions_per_mineral = []
 
-        if not self.fast_calc:
-            iterable = self.interface_frequencies.copy()
-        else:
-            iterable = self.interface_proportions_normalized.copy()
+        iterable = self.interface_frequencies.copy()
 
+        prng = np.random.default_rng(random_seed)
         print("|", end="")
         for i, row in enumerate(iterable):
             print(self.minerals[i], end="|")
-            # print(self.minerals_N)
-            N = self.minerals_N[i].copy() + corr
-            prng = np.random.default_rng(random_seed)
+            N = self.minerals_N[i] + corr
             c = prng.random(size=N)
             transitions_per_mineral.append(
                 create_transitions_correctly(row, c, N))
@@ -550,26 +495,14 @@ class SedGen:
         crystal_size_random = []
 
         for i, mineral in enumerate(self.minerals):
-            if self.binned:
-                if self.volume_binned:
-                    crystals = \
-                        (np.searchsorted(
-                            self.size_bins,
-                            np.exp(
-                                self.csds[i].rvs(self.minerals_N_actual[i],
-                                                 random_state=random_seed))
-                            ) - 1).astype(np.uint16)
-                else:
-                    crystals = \
-                        (np.searchsorted(
-                            self.size_bins,
-                            np.exp(
-                                self.csds[i].rvs(self.minerals_N_actual[i],
-                                                 random_state=random_seed)),
-                            ) - 1).astype(np.uint16)
-            else:
-                crystals = np.exp(self.csds[i].rvs(self.minerals_N_actual[i],
-                                                   random_state=random_seed))
+            crystals = \
+                (np.searchsorted(
+                    self.size_bins,
+                    np.exp(
+                        self.csds[i].rvs(self.minerals_N_actual[i],
+                                         random_state=random_seed))
+                    ) - 1).astype(np.uint16)
+
             crystal_size_random.append(crystals)
 
         return crystal_size_random
@@ -579,12 +512,8 @@ class SedGen:
         performed, the sizes are allocated according to the mineral
         order in the minerals/interfaces array
         """
-        if self.binned:
-            crystal_size_array = np.zeros(self.interface_array.shape,
-                                          dtype=np.uint16)
-        else:
-            crystal_size_array = np.zeros(self.interface_array.shape,
-                                          dtype=np.float64)
+        crystal_size_array = np.zeros(self.interface_array.shape,
+                                      dtype=np.uint16)
 
         # Much faster way (6s) to create crystal size labels array than
         # to use modified function of interfaces array creating (1m40s)!
@@ -605,10 +534,7 @@ class SedGen:
             # Get cystal size (binned) for mineral
             crystal_sizes = self.crystal_size_array[self.interface_array == m]
             # Convert bin labels to bin medians
-            if self.binned:
-                crystal_sizes_array = self.size_bins_medians[crystal_sizes]
-            else:
-                crystal_sizes_array = crystal_sizes
+            crystal_sizes_array = self.size_bins_medians[crystal_sizes]
             # Calculate sum of volume of crystal sizes and store result
             actual_volumes.append(
                 np.sum(
@@ -697,17 +623,17 @@ def calculate_modal_mineralogy_pcg(pcg_array, csize_array, bins_volumes,
 def create_transitions_correctly(row, c, N_initial):
     """https://stackoverflow.com/questions/40474436/how-to-apply-numpy-random-choice-to-a-matrix-of-probability-values-vectorized-s
 
-    Check if probs at end equals all zero to make sure function works.
+    Check if freqs at end equals all zero to make sure function works.
     """
 
     # Absolute transition probabilities
-    probs = row.copy().astype(np.int32)
+    freqs = row.copy().astype(np.int32)
 
     # Number of transitions to obtain
     N = int(N_initial)
 
     # Normalize probabilities
-    N_true = np.sum(probs)
+    N_true = np.sum(freqs)
 
     # Initalize transition array
     transitions = np.zeros(shape=N, dtype=np.uint8)
@@ -716,15 +642,15 @@ def create_transitions_correctly(row, c, N_initial):
     for i in range(N):
         # Check were the random probability falls within the cumulative
         # probability distribution and select corresponding mineral
-        choice = (c[i] < np.cumsum(probs / N_true)).argmax()
+        choice = (c[i] < np.cumsum(freqs / N_true)).argmax()
 
         # Assign corresponding mineral to transition array
         transitions[i] = choice
 
-        # Remove one count of the transition probability array since we want to
+        # Remove one count of the transition frequency array since we want to
         # have the exact number of absolute transitions based on the interface
         # proportions. Similar to a 'replace=False' in random sampling.
-        probs[choice] -= 1
+        freqs[choice] -= 1
         N_true -= 1
 
     return transitions
