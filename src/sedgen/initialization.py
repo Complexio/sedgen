@@ -152,7 +152,7 @@ class SedGen:
 
         print("Correcting interface arrays for consistency...")
         self.interface_array, self.interface_counts_matrix = \
-            self.perform_double_interface_array_correction()
+            self.perform_interface_array_correction()
 
         print("Initializing crystal size array...", end=" ")
         if timed:
@@ -192,6 +192,13 @@ class SedGen:
 
         print("\n---SedGen model initialization finished succesfully---")
 
+    def __repr__(self):
+        output = f"SedGen({self.minerals}, {self.parent_rock_volume}," \
+                 f"{self.modal_mineralogy}, {self.csd_means}," \
+                 f"{self.csd_stds}, {self.interfacial_composition}," \
+                 f"{self.learning_rate}"
+        return output
+
     def get_interface_labels(self):
         """Returns list of combinations of interfaces between provided
         list of minerals
@@ -227,12 +234,12 @@ class SedGen:
         mean = np.log(self.csd_means[m])
         std = np.exp(self.csd_stds[m])
 
-        if np.isinf(trunc_left):
-            pass
-        else:
+        if not np.isinf(trunc_left):
             trunc_left = np.log(trunc_left)
 
-        trunc_right = np.log(trunc_right)
+        if not np.isinf(trunc_right):
+            trunc_right = np.log(trunc_right)
+
         a, b = (trunc_left - mean) / std, (trunc_right - mean) / std
         csd = truncnorm(loc=mean, scale=std, a=a, b=b)
 
@@ -324,23 +331,6 @@ class SedGen:
                       )
         return interface_proportions_normalized
 
-    def create_transitions(self, random_seed=525):
-        possibilities = np.arange(self.n_minerals, dtype=np.uint8)
-
-        prng = np.random.default_rng(random_seed)
-
-        transitions_per_mineral = []
-
-        print("|", end="")
-        for i, mineral in enumerate(self.minerals):
-            print(mineral, end="|")
-            transitions_per_mineral.append(
-                prng.choice(possibilities,
-                            size=self.minerals_N[i]+20000,
-                            p=self.interface_proportions_normalized[i]))
-
-        return tuple(transitions_per_mineral)
-
     def create_transitions_per_mineral_correctly(self, corr=5,
                                                  random_seed=911):
         """Correction 'corr' is implemented to obtain a bit more
@@ -369,28 +359,6 @@ class SedGen:
         return interface_frequencies_corr
 
     def perform_interface_array_correction(self):
-        """Remove or add crystals from/to interface_array where
-        necessary
-        """
-        interface_array_corr = self.interface_array.copy()
-        diff = [np.sum(self.interface_array == x) for x in range(6)] \
-            - self.minerals_N
-
-        for index, item in enumerate(diff):
-            if item > 0:
-                interface_array_corr = \
-                    np.delete(interface_array_corr,
-                              np.where(interface_array_corr == index)
-                              [0][-item:])
-            elif item < 0:
-                interface_array_corr = np.append(interface_array_corr,
-                                                 [index] * -item)
-            else:
-                pass
-
-        return interface_array_corr
-
-    def perform_double_interface_array_correction(self):
         """Remove or add crystals from/to interface_array where
         necessary
         """
@@ -480,7 +448,7 @@ class SedGen:
 
         # Not worth it adding numba to this function
         """
-        size, corr = divmod(len(self.interface_array), 2)
+        size, corr = divmod(self.interface_array.size, 2)
         ranger = np.arange(size, 0, -1, dtype=np.uint32)
         chance = np.append(ranger, ranger[-2+corr::-1])
 
@@ -490,22 +458,6 @@ class SedGen:
         minerals_N_total_actual = [np.sum(self.interface_array == i)
                                    for i in range(self.n_minerals)]
         return minerals_N_total_actual
-
-    def create_crystal_size_arrays(self, random_seed=434):
-        crystal_size_random = []
-
-        for i, mineral in enumerate(self.minerals):
-            crystals = \
-                (np.searchsorted(
-                    self.size_bins,
-                    np.exp(
-                        self.csds[i].rvs(self.minerals_N_actual[i],
-                                         random_state=random_seed))
-                    ) - 1).astype(np.uint16)
-
-            crystal_size_random.append(crystals)
-
-        return crystal_size_random
 
     def fill_main_cystal_size_array(self, crystal_sizes_per_mineral):
         """After pre-generation of random crystal_sizes has been
@@ -546,10 +498,12 @@ class SedGen:
     def check_properties(self):
         # Check that number of crystals per mineral in interface dstack
         # array equals the same number in minerals_N
-        assert all([np.sum(self.interface_array == x) for x in range(6)] -
-                   self.minerals_N == [0] * self.n_minerals), "N is not the same in interface_array and minerals_N"
+        assert all([np.sum(self.interface_array == x) for x in range(6)]
+                   - self.minerals_N == [0] * self.n_minerals), \
+                   "N is not the same in interface_array and minerals_N"
 
-        return "Number of crystals (N) is the same in interface_array and minerals_N"
+        return "Number of crystals (N) is the same in interface_array and"
+        "minerals_N"
 
 
 def calculate_number_proportions_pcg(pcg_array):
