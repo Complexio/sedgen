@@ -1,6 +1,8 @@
 import numpy as np
 import numba as nb
 import time
+import warnings
+import copy
 
 from sedgen import general as gen
 
@@ -176,11 +178,15 @@ class Weathering:
             np.array(list(self.intra_cb_dict.values()))
 
         # Create bin arrays to capture chemical weathering
-        self.size_bins_matrix, self.volume_bins_matrix = \
-            self.create_bins_matrix()
+        self.size_bins_matrix = \
+            self.create_bins_matrix(self.size_bins)
+        self.volume_bins_matrix = \
+            gen.calculate_volume_sphere(self.size_bins_matrix)
 
-        self.size_bins_medians_matrix, self.volume_bins_medians_matrix = \
-            self.create_bins_medians_matrix()
+        self.size_bins_medians_matrix = \
+            gen.calculate_bins_medians(self.size_bins_matrix)
+        self.volume_bins_medians_matrix = \
+            gen.calculate_bins_medians(self.volume_bins_matrix)
 
         # Volume change array
         self.volume_change_matrix = -np.diff(self.volume_bins_medians_matrix,
@@ -191,18 +197,22 @@ class Weathering:
             np.argmax(self.size_bins_medians_matrix > 0, axis=2)
 
         # Create search_bins_matrix
-        self.search_size_bins_matrix, self.search_volume_bins_matrix = \
-            self.create_search_bins_matrix()
+        self.search_size_bins_matrix = \
+            self.create_bins_matrix(self.search_size_bins)
+        self.search_volume_bins_matrix = \
+            gen.calculate_volume_sphere(self.search_size_bins_matrix)
 
         # Create search_bins_medians_matrix
-        self.search_size_bins_medians_matrix,\
-            self.search_volume_bins_medians_matrix = \
-            self.create_search_bins_medians_matrix()
+        self.search_size_bins_medians_matrix = \
+            gen.calculate_bins_medians(self.search_size_bins_matrix)
+        self.search_volume_bins_medians_matrix = \
+            gen.calculate_bins_medians(self.search_volume_bins_matrix)
 
         # Create ratio_search_bins_matrix
-        self.ratio_search_size_bins_matrix,\
-            self.ratio_search_volume_bins_matrix = \
-            self.create_ratio_search_bins_matrix()
+        self.ratio_search_size_bins_matrix = gen.calculate_ratio_search_bins(
+            self.search_size_bins_medians_matrix)
+        self.ratio_search_volume_bins_matrix = gen.calculate_ratio_search_bins(
+            self.search_volume_bins_medians_matrix)
 
         # Create array with corresponding bins to intra_cb_thesholds
         # for matrix of bin arrays
@@ -228,16 +238,24 @@ class Weathering:
                                "chem_pcg"],
                    display_mass_balance=False,
                    display_mcg_sums=False,
-                   timesteps=None):
+                   timesteps=None,
+                   timed=False,
+                   inplace=False):
+
+        # Whether to work on a copy of the instance or work 'inplace'
+        self = self if inplace else copy.copy(self)
+
         if not timesteps:
             timesteps = self.n_timesteps
 
         mcg_broken = np.zeros_like(self.mcg)
-        tac = time.perf_counter()
+        if timed:
+            tac = time.perf_counter()
         # Start model
         for step in range(timesteps):
             # What timestep we're at
-            tic = time.perf_counter()
+            if timed:
+                tic = time.perf_counter()
             print(f"{step}/{self.n_timesteps}", end="\r", flush=True)
 
             # Perform weathering operations
@@ -255,11 +273,14 @@ class Weathering:
                     # use newly formed mcg during chemical weathering of
                     # mcg
                     if display_mcg_sums:
-                        print("mcg sum over minerals after intra_cb but before inter_cb", np.sum(np.sum(self.mcg, axis=2), axis=0))
+                        print("mcg sum over minerals after intra_cb but before"
+                              "inter_cb",
+                              np.sum(np.sum(self.mcg, axis=2), axis=0))
                     # Account for residue
                     self.residue[step] = residue
                     self.residue_count[step] = residue_count
-                    toc_intra_cb = time.perf_counter()
+                    if timed:
+                        toc_intra_cb = time.perf_counter()
 
                 elif operation == "inter_cb":
                     # inter-crystal breakage
@@ -268,12 +289,15 @@ class Weathering:
                         self.pcg_chem_weath_array_new, self.mcg = \
                         self.inter_crystal_breakage(step)
                     if display_mcg_sums:
-                        print("mcg sum after inter_cb", np.sum(np.sum(self.mcg, axis=2), axis=0))
-                    toc_inter_cb = time.perf_counter()
+                        print("mcg sum after inter_cb",
+                              np.sum(np.sum(self.mcg, axis=2), axis=0))
+                    if timed:
+                        toc_inter_cb = time.perf_counter()
 
                     # If no pcgs are remaining anymore, stop the model
                     if not self.pcgs_new:
-                        print(f"After {step} steps all pcg have been broken down to mcg")
+                        print(f"After {step} steps all pcg have been broken"
+                              "down to mcg")
                         return self.pcgs_new, self.mcg, self.pcg_additions, \
                             self.mcg_additions, self.pcg_comp_evolution, \
                             self.pcg_size_evolution, self.interface_counts, \
@@ -295,9 +319,12 @@ class Weathering:
                     self.mcg, self.mcg_chem_residue = \
                         self.chemical_weathering_mcg()
                     if display_mcg_sums:
-                        print("mcg sum after chem_mcg", np.sum(np.sum(self.mcg, axis=2), axis=0))
-                        print("mcg_chem_residue after chem_mcg", self.mcg_chem_residue)
-                    toc_chem_mcg = time.perf_counter()
+                        print("mcg sum after chem_mcg",
+                              np.sum(np.sum(self.mcg, axis=2), axis=0))
+                        print("mcg_chem_residue after chem_mcg",
+                              self.mcg_chem_residue)
+                    if timed:
+                        toc_chem_mcg = time.perf_counter()
 
                 elif operation == "chem_pcg":
                     # Don't perform chemical weathering of pcg in first
@@ -314,10 +341,12 @@ class Weathering:
                         self.pcg_chem_residue, \
                         self.interface_counts = \
                         self.chemical_weathering_pcg()
-                    toc_chem_pcg = time.perf_counter()
+                    if timed:
+                        toc_chem_pcg = time.perf_counter()
 
                 else:
-                    print(f"Warning: {operation} not recognized as a valid operation, skipping {operation} and continueing")
+                    print(f"Warning: {operation} not recognized as a valid"
+                          f"operation, skipping {operation} and continueing")
                     continue
 
             # Track model's evolution
@@ -332,7 +361,7 @@ class Weathering:
                 np.sum(self.residue_count_additions)
 
             self.pcg_additions[step] = len(self.pcgs_new)
-            self.mcg_additions[step] = np.sum(self.mcg)# - np.sum(mcg_additions)
+            self.mcg_additions[step] = np.sum(self.mcg)  # - np.sum(mcg_additions)
 
             self.pcg_comp_evolution.append(self.pcgs_new)
             self.pcg_size_evolution.append(self.crystal_size_array_new)
@@ -345,7 +374,8 @@ class Weathering:
             # Mass balance check
             if display_mass_balance:
                 vol_mcg = np.sum([self.volume_bins_medians_matrix * self.mcg])
-                print("vol_mcg_total:", vol_mcg, "over", np.sum(self.mcg), "mcg")
+                print("vol_mcg_total:", vol_mcg, "over",
+                      np.sum(self.mcg), "mcg")
                 vol_residue = \
                     np.sum(self.residue_additions) + \
                     np.sum(self.pcg_chem_residue_additions) + \
@@ -360,7 +390,8 @@ class Weathering:
                 print("vol_residue_total:", vol_residue)
 
                 vol_pcg = self.calculate_vol_pcg()
-                print("vol_pcg_total:", vol_pcg, "over", len(self.pcgs_new), "pcg")
+                print("vol_pcg_total:", vol_pcg, "over",
+                      len(self.pcgs_new), "pcg")
 
                 mass_balance = vol_pcg + vol_mcg + vol_residue
                 self.mass_balance[step] = mass_balance
@@ -368,30 +399,30 @@ class Weathering:
 
             # If no pcgs are remaining anymore, stop the model
             if not self.pcgs_new:  # Faster to check if pcgs_new has any items
-                print(f"After {step} steps all pcg have been broken down to mcg")
+                print(f"After {step} steps all pcg have been broken down to"
+                      "mcg")
                 break
 
-            if 'intra_cb' in operations:
-                print(f"Intra_cb {step} done in{toc_intra_cb - tic: 1.4f} seconds")
-            if 'inter_cb' in operations:
-                print(f"Inter_cb {step} done in{toc_inter_cb - toc_intra_cb: 1.4f} seconds")
-            if 'chem_mcg' in operations:
-                print(f"Chem_mcg {step} done in{toc_chem_mcg - toc_inter_cb: 1.4f} seconds")
-            if 'chem_pcg' in operations:
-                print(f"Chem_pcg {step} done in{toc_chem_pcg - toc_chem_mcg: 1.4f} seconds")
-            print("\n")
+            if timed:
+                if 'intra_cb' in operations:
+                    print(f"Intra_cb {step} done"
+                          f"in{toc_intra_cb - tic: 1.4f} seconds")
+                if 'inter_cb' in operations:
+                    print(f"Inter_cb {step} done"
+                          f"in{toc_inter_cb - toc_intra_cb: 1.4f} seconds")
+                if 'chem_mcg' in operations:
+                    print(f"Chem_mcg {step} done"
+                          f"in{toc_chem_mcg - toc_inter_cb: 1.4f} seconds")
+                if 'chem_pcg' in operations:
+                    print(f"Chem_pcg {step} done"
+                          f"in{toc_chem_pcg - toc_chem_mcg: 1.4f} seconds")
+                print("\n")
 
-            toc = time.perf_counter()
-            print(f"Step {step} done in{toc - tic: 1.4f} seconds")
-            print(f"Time elapsed: {toc - tac} seconds\n")
+                toc = time.perf_counter()
+                print(f"Step {step} done in{toc - tic: 1.4f} seconds")
+                print(f"Time elapsed: {toc - tac} seconds\n")
 
-        return self.pcgs_new, self.mcg, self.pcg_additions, \
-            self.mcg_additions, self.pcg_comp_evolution, \
-            self.pcg_size_evolution, self.interface_counts, \
-            self.crystal_size_array_new, self.mcg_broken_additions, \
-            self.residue_additions, self.residue_count_additions, \
-            self.pcg_chem_residue_additions, self.mcg_chem_residue_additions, \
-            self.mass_balance, self.mcg_evolution
+        return self
 
     def calculate_vol_pcg(self):
 
@@ -554,9 +585,9 @@ class Weathering:
         elif len(p) == self.n_minerals:
             return np.array(p)
         else:
-            raise ValueError("p should be of length 1 or same length as minerals")
+            raise ValueError("p should be of length 1 or same length as"
+                             "minerals")
 
-    # TODO: generalize intra_cb_threshold_bin=200 parameter of perform_intra_crystal_breakage_2d; this can be calculated based on intra_cb_threshold and bins.
     def intra_crystal_breakage_binned(self, alternator, start_bin_corr=5):
         mcg_new = np.zeros_like(self.mcg)
         residue_new = \
@@ -617,6 +648,17 @@ class Weathering:
                 np.sum(mcg_new[1:] * self.volume_change_matrix, axis=0),
                 axis=1)
         residue_per_mineral = residue_1 + residue_2
+
+        # Make sure that mcg in last chemical weathering state are not
+        # reintroduced to zero chemical weathering state
+        if not (mcg_new[0] == 0).all():
+            mcg_new[-1] += mcg_new[0]
+            mcg_new[0] = 0
+
+            warnings.warn("End of chemical states reached, mcg that were "
+                          "reintroduced at zero chemical weathering state "
+                          "during chem_weath_mcg have been rolled back to "
+                          "last chemical weathering state.", UserWarning)
 
         return mcg_new, residue_per_mineral
 
@@ -880,59 +922,18 @@ class Weathering:
             pcg_chem_weath_array_new, residue_per_mineral, \
             interface_counts_matrix_new
 
-    def create_bins_matrix(self):
+    def create_bins_matrix(self, bins):
         """Create the matrix holding the arrays with bins which each
         represent the inital bin array minus x times the chemical
         weathering rate per mineral class.
         """
 
-        size_bins_matrix = \
-            np.array([[self.size_bins - x * self.chem_weath_rates[i]
-                      for i in range(self.n_minerals)]
-                     for x in range(self.n_timesteps)])
+        bins_matrix = \
+            np.array([[bins - n * self.chem_weath_rates[m]
+                      for m in range(self.n_minerals)]
+                     for n in range(self.n_timesteps)])
 
-        volume_bins_matrix = gen.calculate_volume_sphere(size_bins_matrix)
-
-        return size_bins_matrix, volume_bins_matrix
-
-    def create_bins_medians_matrix(self):
-        size_bins_medians_matrix = \
-            gen.calculate_bins_medians(self.size_bins_matrix)
-        volume_bins_medians_matrix = \
-            gen.calculate_bins_medians(self.volume_bins_matrix)
-
-        return size_bins_medians_matrix, volume_bins_medians_matrix
-
-    def create_search_bins_matrix(self):
-        search_size_bins_matrix = \
-            np.array([[self.search_size_bins - x * self.chem_weath_rates[i]
-                      for i in range(self.n_minerals)]
-                     for x in range(self.n_timesteps)])
-
-        search_volume_bins_matrix = \
-            gen.calculate_volume_sphere(search_size_bins_matrix)
-
-        return search_size_bins_matrix, search_volume_bins_matrix
-
-    def create_search_bins_medians_matrix(self):
-        search_size_bins_medians_matrix = \
-            gen.calculate_bins_medians(self.search_size_bins_matrix)
-
-        search_volume_bins_medians_matrix = \
-            gen.calculate_bins_medians(self.search_volume_bins_matrix)
-
-        return search_size_bins_medians_matrix, \
-            search_volume_bins_medians_matrix
-
-    def create_ratio_search_bins_matrix(self):
-        ratio_search_size_bins_matrix = \
-            calculate_ratio_search_bins_matrix(
-                self.search_size_bins_medians_matrix)
-        ratio_search_volume_bins_matrix = \
-            calculate_ratio_search_bins_matrix(
-                self.search_volume_bins_medians_matrix)
-
-        return ratio_search_size_bins_matrix, ratio_search_volume_bins_matrix
+        return bins_matrix
 
     def create_intra_cb_dicts_matrix(self):
         # Need to account for 'destruction' of geometric series due to
@@ -944,7 +945,7 @@ class Weathering:
             np.zeros((self.n_timesteps, self.n_minerals), dtype='object')
 
         for n in range(self.n_timesteps):
-            print(n)
+            print(n, end=", ")
             for m in range(self.n_minerals):
                 intra_cb_breaks_array = \
                     np.zeros(
@@ -975,11 +976,6 @@ class Weathering:
 
     def calculate_mass_balance_difference(self):
         return self.mass_balance[1:] - self.mass_balance[:-1]
-
-
-def calculate_ratio_search_bins_matrix(search_bins_medians_matrix):
-    return search_bins_medians_matrix / \
-        search_bins_medians_matrix[..., -1, None]
 
 
 def create_interface_location_prob(a):
@@ -1186,11 +1182,3 @@ def determine_intra_cb_dict_array_version(bin_label, ratio_search_bins,
 @nb.njit(cache=True)
 def find_closest(value, lookup, corr=0):
     return np.argmax(value < lookup) - corr
-
-
-### OLD CODE ###
-@nb.njit
-def account_interfaces(interface_counts, interface_indices):
-    for interface_index in interface_indices:
-        interface_counts[interface_index] -= 1
-    return interface_counts

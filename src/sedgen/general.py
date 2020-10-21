@@ -185,7 +185,7 @@ def initialize_search_size_bins(n_bins, lower=-25, upper=5):
 def calculate_ratio_search_bins(search_bins_medians):
     """Calculates the ratio between all search_bins_medians an the final
     bin's median value."""
-    return search_bins_medians / search_bins_medians[-1]
+    return search_bins_medians / search_bins_medians[..., -1, None]
 
 
 def expand_array(a, expand=1):
