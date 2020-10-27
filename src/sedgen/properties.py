@@ -11,50 +11,62 @@ import re
 
 class Mineral:
 
-    def __init__(self):
+    elements = {"Si": {"molar_volume": 12.054,
+                       "density": 2.3290,
+                       },
+                "O": {"molar_volume": 0,
+                      "density": 1.429,
+                      },
+                }
 
-        self.molar_volume = 0
-        self.molar_mass = 0
-        self.mineral_formula = 0
-        self.weathering_rate = 0
+    def get_elements(self):
+        elements = re.findall("([A-Z][a-z]?)([0-9]*)", self.formula)
 
-        self.mineral_strength = 0
-        self.mineral_density = 0
-
-        self.interface_strength = 0
-
-        elements = {"Si": {"molar_volume": 0.000012054,
-                           "density": 2.3290,
-                           },
-                    "O": {"molar_volume": 0.011196,
-                          "density": 1.429,
-                          }
-                    }
+        return elements
 
 
 class Quartz(Mineral):
 
     def __init__(self):
-        Mineral.__init__(self)
+        self.formula = "SiO2"
+        self.molar_volume = 23.69  # cm³/mol
+        self.density = 2.66  # g/cm³ | calculated
+        self.molar_mass = 60.09  # g
 
-        self.mineral_formula = "SiO2"
-        self.molar_volume = 0
-        self.mineral_density = 0
-        self.molar_mass = 0
-
-        self.weathering_rate = 0
-
-        self.mineral_strength = 0
-
-        self.interface_strength = 0
+        self.chem_weath_rate = 0
+        self.strength = 0
+        # self.interface_strength = 0
 
 
-def get_elements(formula):
-    elements = re.findall("([A-Z][a-z]?)([0-9]*)", formula)
+class Plagioclase(Mineral):
+    def __init__(self):
+        pass
 
-    return elements
+
+class Kfeldspar(Mineral):
+    def __init__(self):
+        pass
 
 
-def calculate_molar_volume(mineral, weights):
+class Biotite(Mineral):
+    def __init__(self):
+        pass
 
-    return sum((weights[e] * int(i)) for e, i in mineral)
+
+class Opaques(Mineral):
+    """Use properties of magnetite here or mean values of some common
+    opaque minerals the occur in granite?"""
+    def __init__(self):
+        pass
+
+
+class Accessories(Mineral):
+    """Use properties of hornblende here or mean values of some common
+    accessory minerals that occur in granite?"""
+    def __init__(self):
+        pass
+
+
+# def calculate_molar_volume(mineral, weights):
+
+#     return sum((weights[e] * int(i)) for e, i in mineral)
