@@ -1,6 +1,7 @@
 import numpy as np
 from scipy import stats
 
+
 def ecdf(data):
     """Compute ECDF for a one-dimensional array of measurements.
 
@@ -26,6 +27,7 @@ def ecdf(data):
     y = np.arange(1, n+1) / float(n)
 
     return x, y
+
 
 def clr(data):
     """Centred log ratio transformation"""
