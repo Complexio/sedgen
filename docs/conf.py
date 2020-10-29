@@ -11,7 +11,7 @@
 import os
 import sys
 import inspect
-# import shutil
+import shutil
 
 __location__ = os.path.join(os.getcwd(), os.path.dirname(
     inspect.getfile(inspect.currentframe())))
@@ -29,32 +29,32 @@ sys.path.insert(0, os.path.join(__location__, '../src'))
 # setup.py install" in the RTD Advanced Settings.
 # Additionally it helps us to avoid running apidoc manually
 
-# try:  # for Sphinx >= 1.7
-#     from sphinx.ext import apidoc
-# except ImportError:
-#     from sphinx import apidoc
+try:  # for Sphinx >= 1.7
+    from sphinx.ext import apidoc
+except ImportError:
+    from sphinx import apidoc
 
-# output_dir = os.path.join(__location__, "api")
-# module_dir = os.path.join(__location__, "../src/sedgen")
+output_dir = os.path.join(__location__, "api")
+module_dir = os.path.join(__location__, "../src/sedgen")
 # try:
 #     shutil.rmtree(output_dir)
 # except FileNotFoundError:
 #     pass
 
-# try:
-#     import sphinx
-#     from pkg_resources import parse_version
+try:
+    import sphinx
+    from pkg_resources import parse_version
 
-#     cmd_line_template = "sphinx-apidoc -f -o {outputdir} {moduledir}"
-#     cmd_line = cmd_line_template.format(outputdir=output_dir, moduledir=module_dir)
+    cmd_line_template = "sphinx-apidoc -f -o {outputdir} {moduledir}"
+    cmd_line = cmd_line_template.format(outputdir=output_dir, moduledir=module_dir)
 
-#     args = cmd_line.split(" ")
-#     if parse_version(sphinx.__version__) >= parse_version('1.7'):
-#         args = args[1:]
+    args = cmd_line.split(" ")
+    if parse_version(sphinx.__version__) >= parse_version('1.7'):
+        args = args[1:]
 
-#     apidoc.main(args)
-# except Exception as e:
-#     print("Running `sphinx-apidoc` failed!\n{}".format(e))
+    apidoc.main(args)
+except Exception as e:
+    print("Running `sphinx-apidoc` failed!\n{}".format(e))
 
 # -- General configuration ----------------------------------------------------
 
@@ -84,7 +84,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'sedgen'
-copyright = u'2019, Bram Paredis'
+copyright = '2019-2020, Bram Paredis'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -174,7 +174,7 @@ else:
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
+# html_static_path = ['_static']
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
