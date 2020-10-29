@@ -11,7 +11,7 @@
 import os
 import sys
 import inspect
-import shutil
+# import shutil
 
 __location__ = os.path.join(os.getcwd(), os.path.dirname(
     inspect.getfile(inspect.currentframe())))
@@ -21,7 +21,7 @@ __location__ = os.path.join(os.getcwd(), os.path.dirname(
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 sys.path.insert(0, os.path.join(__location__, '../src'))
 
-# -- Run sphinx-apidoc ------------------------------------------------------
+# -- Run sphinx-apidoc --------------------------------------------------------
 # This hack is necessary since RTD does not issue `sphinx-apidoc` before running
 # `sphinx-build -b html . _build/html`. See Issue:
 # https://github.com/rtfd/readthedocs.org/issues/1139
@@ -29,44 +29,46 @@ sys.path.insert(0, os.path.join(__location__, '../src'))
 # setup.py install" in the RTD Advanced Settings.
 # Additionally it helps us to avoid running apidoc manually
 
-try:  # for Sphinx >= 1.7
-    from sphinx.ext import apidoc
-except ImportError:
-    from sphinx import apidoc
+# try:  # for Sphinx >= 1.7
+#     from sphinx.ext import apidoc
+# except ImportError:
+#     from sphinx import apidoc
 
-output_dir = os.path.join(__location__, "api")
-module_dir = os.path.join(__location__, "../src/sedgen")
-try:
-    shutil.rmtree(output_dir)
-except FileNotFoundError:
-    pass
+# output_dir = os.path.join(__location__, "api")
+# module_dir = os.path.join(__location__, "../src/sedgen")
+# try:
+#     shutil.rmtree(output_dir)
+# except FileNotFoundError:
+#     pass
 
-try:
-    import sphinx
-    from pkg_resources import parse_version
+# try:
+#     import sphinx
+#     from pkg_resources import parse_version
 
-    cmd_line_template = "sphinx-apidoc -f -o {outputdir} {moduledir}"
-    cmd_line = cmd_line_template.format(outputdir=output_dir, moduledir=module_dir)
+#     cmd_line_template = "sphinx-apidoc -f -o {outputdir} {moduledir}"
+#     cmd_line = cmd_line_template.format(outputdir=output_dir, moduledir=module_dir)
 
-    args = cmd_line.split(" ")
-    if parse_version(sphinx.__version__) >= parse_version('1.7'):
-        args = args[1:]
+#     args = cmd_line.split(" ")
+#     if parse_version(sphinx.__version__) >= parse_version('1.7'):
+#         args = args[1:]
 
-    apidoc.main(args)
-except Exception as e:
-    print("Running `sphinx-apidoc` failed!\n{}".format(e))
+#     apidoc.main(args)
+# except Exception as e:
+#     print("Running `sphinx-apidoc` failed!\n{}".format(e))
 
-# -- General configuration -----------------------------------------------------
+# -- General configuration ----------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
 # needs_sphinx = '1.0'
 
-# Add any Sphinx extension module names here, as strings. They can be extensions
+# Add any Sphinx extension module names here, as strings.
+# They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.intersphinx', 'sphinx.ext.todo',
-              'sphinx.ext.autosummary', 'sphinx.ext.viewcode', 'sphinx.ext.coverage',
-              'sphinx.ext.doctest', 'sphinx.ext.ifconfig', 'sphinx.ext.mathjax',
-              'sphinx.ext.napoleon']
+extensions = ['sphinx.ext.autodoc', 'sphinx.ext.intersphinx',
+              'sphinx.ext.todo', 'sphinx.ext.autosummary',
+              'sphinx.ext.viewcode', 'sphinx.ext.coverage',
+              'sphinx.ext.doctest', 'sphinx.ext.ifconfig',
+              'sphinx.ext.mathjax', 'sphinx.ext.napoleon']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
@@ -131,7 +133,7 @@ pygments_style = 'sphinx'
 # keep_warnings = False
 
 
-# -- Options for HTML output ---------------------------------------------------
+# -- Options for HTML output --------------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
@@ -219,7 +221,7 @@ html_static_path = ['_static']
 htmlhelp_basename = 'sedgen-doc'
 
 
-# -- Options for LaTeX output --------------------------------------------------
+# -- Options for LaTeX output -------------------------------------------------
 
 latex_elements = {
 # The paper size ('letterpaper' or 'a4paper').
@@ -259,7 +261,7 @@ latex_documents = [
 # If false, no module index is generated.
 # latex_domain_indices = True
 
-# -- External mapping ------------------------------------------------------------
+# -- External mapping ---------------------------------------------------------
 python_version = '.'.join(map(str, sys.version_info[0:2]))
 intersphinx_mapping = {
     'sphinx': ('http://www.sphinx-doc.org/en/stable', None),
