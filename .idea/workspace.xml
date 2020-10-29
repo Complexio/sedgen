@@ -2,8 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="6d9ce037-8506-4bbc-8562-f31ae2cab278" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/notebooks/skeleton.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/skeleton.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/sedgen/geostatistics.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/sedgen/geostatistics.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/1_Initialization.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/1_Initialization.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/sedgen/discretization.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/sedgen/discretization.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/sedgen/general.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/sedgen/general.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/sedgen/initialization.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/sedgen/initialization.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -49,6 +51,7 @@
       <workItem from="1580458509327" duration="73000" />
       <workItem from="1580458695886" duration="28000" />
       <workItem from="1584093701492" duration="553000" />
+      <workItem from="1603960649318" duration="7000" />
     </task>
     <servers />
   </component>
@@ -56,18 +59,9 @@
     <option name="version" value="1" />
   </component>
   <component name="WindowStateProjectService">
-    <state x="2312" y="14" key="CommitChangelistDialog2" timestamp="1584093813171">
-      <screen x="1920" y="0" width="1680" height="1010" />
-    </state>
-    <state x="2312" y="14" key="CommitChangelistDialog2/0.0.1920.1040/1920.0.1680.1010@1920.0.1680.1010" timestamp="1584093813171" />
-    <state x="533" y="200" key="SettingsEditor" timestamp="1580458581961">
-      <screen x="0" y="0" width="2048" height="1112" />
-    </state>
-    <state x="533" y="200" key="SettingsEditor/-1920.0.1920.1030/0.0.2048.1112@0.0.2048.1112" timestamp="1580458581961" />
-    <state x="681" y="357" key="com.intellij.ide.util.TipDialog" timestamp="1584093701280">
+    <state x="636" y="345" key="com.intellij.ide.util.TipDialog" timestamp="1603960653897">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="726" y="382" key="com.intellij.ide.util.TipDialog/-1920.0.1920.1030/0.0.2048.1112@0.0.2048.1112" timestamp="1580458697455" />
-    <state x="681" y="357" key="com.intellij.ide.util.TipDialog/0.0.1920.1040/1920.0.1680.1010@0.0.1920.1040" timestamp="1584093701280" />
+    <state x="636" y="345" key="com.intellij.ide.util.TipDialog/1920.0.1920.1040/0.0.1920.1040@0.0.1920.1040" timestamp="1603960653897" />
   </component>
 </project>
