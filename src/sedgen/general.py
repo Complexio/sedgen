@@ -3,6 +3,7 @@ import numba as nb
 from fast_histogram import histogram1d, histogram2d
 
 
+# Deprecated?
 def count_interfaces(A):
     """Count number frequencies of crystal interfaces
     https://stackoverflow.com/
@@ -19,6 +20,7 @@ def count_interfaces(A):
     # np.unique, unfortunately.
 
 
+# Deprecated?
 def convert_counted_interfaces_to_matrix(unq_a, unq_cnt, n_minerals):
     """Converts tuple resulting from count_interfaces call to numpy
     matrix. Doesn't break if not all entries of the matrix are present
@@ -48,6 +50,12 @@ def count_items(array, n_bins):
 # To Do: interface strengths matrix still needs to be added here
 # instead of interface_proportions_normalized matrix.
 def get_interface_strengths_prob(interface_strengths_matrix, interface_array):
+    """Returns the probability of interface selection for inter-crystal
+    breakage based on the inherent strength of the interface.
+    A quartz-quartz interface will have a different strength than a
+    plagioclase-plagioclase interface e.g. . The interface strength have
+    been provided beforehand and should be normalized to 1.
+    """
     interface_strengths = \
         interface_strengths_matrix[interface_array[:-1],
                                    interface_array[1:]]
@@ -55,6 +63,13 @@ def get_interface_strengths_prob(interface_strengths_matrix, interface_array):
 
 
 def get_interface_size_prob(crystal_size_array):
+    """Returns the probability of interface selection for inter-crystal
+    breakage based on the size of the interface. The larger the
+    interface, the higher the chance for selection as it will be
+    weaker compared to a smaller interface. Size of the interface is
+    determined by getting the smallest crystal size per two crystals
+    along the crystal_size_array.
+    """
     interface_size_prob = \
         np.min(create_pairs(crystal_size_array),
                axis=1)
@@ -100,6 +115,7 @@ def calculate_equivalent_circular_diameter(volume):
     return diameter
 
 
+# Deprecated?
 def strided_app(a, L, S):  # Window len = L, Stride len/stepsize = S
     """https://stackoverflow.com/questions/40084931/
     taking-subarrays-from-numpy-array-with-given-stride-stepsize/
@@ -110,6 +126,7 @@ def strided_app(a, L, S):  # Window len = L, Stride len/stepsize = S
         np.lib.stride_tricks.as_strided(a, shape=(nrows, L), strides=(S*n, n))
 
 
+# Deprecated?
 def min_filter1d_valid_strided(a, W):
     """https://stackoverflow.com/
     questions/43288542/max-in-a-sliding-window-in-numpy-array"""

@@ -5,7 +5,7 @@ from sedgen.general import calculate_volume_sphere
 
 
 class Bins:
-    def __init__(self, n_bins=1500, lower=-10, upper=5):
+    def __init__(self, lower=-10, upper=5, n_bins=1500):
         self.n_bins = n_bins
         self.n_bin_edges = self.n_bins + 1
         self.lower_bin_edge = lower
@@ -205,7 +205,7 @@ class McgBreakPatternMixin():
 
         return intra_cb_breaks_matrix, diffs_volumes_matrix
 
-
+# Deprecated?
 def determine_intra_cb_dict(bin_label, ratio_search_bins, verbose=False,
                             corr=1, return_arrays=True, max_n_values=None):
     """Determines the relations for the intra-crystal breakage

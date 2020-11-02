@@ -1,5 +1,8 @@
 numpy
 scipy
+numba
+matplotlib
+pandas
 
 [testing]
 pytest

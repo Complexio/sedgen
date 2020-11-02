@@ -1,7 +1,7 @@
 Metadata-Version: 2.1
 Name: sedgen
-Version: 0.0.0
-Summary: Add a short description here!
+Version: 0.0.post0.dev82+g91a51e8.dirty
+Summary: Sediment Generation model
 Home-page: https://github.com/pyscaffold/pyscaffold/
 Author: Bram Paredis
 Author-email: bram.paredis@gmail.com
