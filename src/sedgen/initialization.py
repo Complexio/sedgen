@@ -104,7 +104,8 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                  n_timesteps=100, n_standard_cases=2000,
                  intra_cb_p=[0.5], intra_cb_thresholds=[1/256],
                  chem_weath_rates=[0.01], enable_interface_location_prob=True,
-                 enable_multi_pcg_breakage=False, enable_pcg_selection=False):
+                 enable_multi_pcg_breakage=False, enable_pcg_selection=False,
+                 exclude_absent_minerals=False):
 
         # ---------------------------------------------------------------------
         print("---SedGen model initialization started---\n")
@@ -118,6 +119,21 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         self.csd_stds = csd_stds
         self.interfacial_composition = interfacial_composition
         self.learning_rate = learning_rate
+        self.exclude_absent_minerals = exclude_absent_minerals
+
+        if self.exclude_absent_minerals:
+            self.present_minerals = np.where(self.modal_mineralogy != 0)[0]
+            print(self.present_minerals)
+            self.minerals = \
+                list(np.array(self.minerals)[self.present_minerals])
+            self.n_minerals = len(self.minerals)
+            self.modal_mineralogy = \
+                self.modal_mineralogy[self.present_minerals]
+            self.csd_means = self.csd_means[self.present_minerals]
+            self.csd_stds = self.csd_stds[self.present_minerals]
+            if self.interfacial_composition:
+                self.interfacial_composition = \
+                    self.interfacial_composition[self.present_minerals][:, self.present_minerals]
 
         # Second group of model parameters
         # ================================
@@ -139,6 +155,13 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         # Create array of chemical weathering rates
         self.chem_weath_rates = \
             self.mineral_property_setter(chem_weath_rates)
+
+        # if self.exclude_absent_minerals:
+        #     self.intra_cb_p = self.intra_cb_p[self.present_minerals]
+        #     self.intra_cb_thresholds = \
+        #         self.intra_cb_thresholds[self.present_minerals]
+        #     self.chem_weath_rates = \
+        #         self.chem_weath_rates[self.present_minerals]
 
         if self.enable_interface_location_prob:
             # Calculate interface_location_prob array for standard
@@ -285,8 +308,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         elif len(p) == self.n_minerals:
             return np.array(p)
         else:
-            raise ValueError("p should be of length 1 or same length as"
-                             "minerals")
+            raise ValueError("property should be of length 1 or same"
+                             f"length ({self.present_minerals.size}) as"
+                             "present minerals")
 
     def calculate_actual_volumes(self):
         """Calculates the actual volume / modal mineralogy taken up by
@@ -309,7 +333,8 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
     def check_properties(self):
         # Check that number of crystals per mineral in interface dstack
         # array equals the same number in minerals_N
-        assert all([np.sum(self.interface_array == x) for x in range(6)]
+        assert all([np.sum(self.interface_array == x)
+                    for x in range(self.n_minerals)]
                    - self.minerals_N == [0] * self.n_minerals), \
                    "N is not the same in interface_array and minerals_N"
 

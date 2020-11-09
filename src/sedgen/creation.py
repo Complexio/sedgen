@@ -49,7 +49,10 @@ class MineralOccurenceMixin:
 
         rs = 0
         while total_volume_mineral < requested_volume:
+            # volume that still needs to be filled with crystals
             diff = requested_volume - total_volume_mineral
+            # ‘m’ represents the current mineral class
+            # +1 so that each time at least one crystal is requested
             crystals_requested = \
                 int(diff / (self.modal_mineralogy[m] * self.learning_rate)) + 1
 
@@ -63,7 +66,10 @@ class MineralOccurenceMixin:
 
             rs += 1
 
-        crystals_array = np.concatenate(crystals)
+        try:
+            crystals_array = np.concatenate(crystals)
+        except ValueError:
+            crystals_array = np.array(crystals)
 
         crystals_binned = \
             (np.searchsorted(self.volume_bins,
@@ -168,8 +174,8 @@ class InterfaceOccurenceMixin:
         prob_unit = 1
         # interface_pairs_corr = self.interface_pairs.copy()
         interface_frequencies_corr = self.interface_counts_matrix.copy()
-        diff = [np.sum(self.interface_array == x) for x in range(6)] \
-            - self.minerals_N
+        diff = [np.sum(self.interface_array == x)
+                for x in range(self.n_minerals)] - self.minerals_N
         # print("diff", diff)
         # print(interface_frequencies_corr)
 
@@ -285,7 +291,6 @@ def create_interface_array(minerals_N, transitions_per_mineral):
     # The time loss of working with a numpy array from the start is
     # around 10 s compared to the list implementation.
     interface_array = np.zeros(int(np.sum(minerals_N)), dtype=np.uint8)
-    print(interface_array)
     counters = np.zeros(len(minerals_N), dtype=np.uint32)
     array_size_range = range(int(np.sum(minerals_N)))
 
@@ -296,8 +301,6 @@ def create_interface_array(minerals_N, transitions_per_mineral):
         if interface_array[i] > 5:
             print(i, previous_state, counters[previous_state], transitions_per_mineral[previous_state][counters[previous_state]], transitions_per_mineral[previous_state])
         counters[previous_state] += 1
-
-    print(interface_array)
 
     return interface_array
 
