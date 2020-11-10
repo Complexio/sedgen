@@ -1,7 +1,0 @@
-{
-  "tests/test_geostatistics.py": true,
-  "tests/test_sedgen.geostatistics.py": true,
-  "tests/test_sedgen.py::TestAlr": true,
-  "tests/test_sedgen.py::TestClr": true,
-  "tests/test_sedgen.py::TestGeometrics": true
-}

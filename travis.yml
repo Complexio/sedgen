@@ -22,12 +22,12 @@ install:
   - conda info -a
 
   # Replace dep1 dep2 ... with your dependencies
-  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numpy pandas scipy matplotlib seaborn pytest-cov codecov
+  - conda create -q -n test-environment python=$TRAVIS_PYTHON_VERSION numpy numba pandas scipy matplotlib seaborn pytest-cov codecov fast-histogram
   - conda activate test-environment
   - python setup.py install
 
 script:
-  - pytest --cov-report term --cov=app/test/
+  - pytest --cov-report term --cov=sedgen
 
 after_success:
   - codecov
