@@ -49,10 +49,11 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
     modal_mineralogy : np.array
         Volumetric proportions of mineral classes at start of model
     csd_means : np.array
-        Crystal size means of mineral classes
+        Crystal size arithmetic means of mineral classes in mm
     csd_stds : np.array
-        Crystal size standard deviations of mineral classes
+        Crystal size standard deviations of mineral classes in mm
     interfacial_composition : np.array (optional)
+        Observed crystal interface proportions
     learning_rate : int (optional)
         Amount of change used during determination of N crystals per
         mineral class; defaults to 1000
@@ -88,14 +89,22 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         If True, during inter-crystal breakage a pcg may break in more
         than two new pcg/mcg grains. This option might speed up the
         model. By activating all interfaces weaker than the selected
-        interfaces, this behavior might be accomplished.
+        interfaces, this behavior might be accomplished; defaults to
+        False.
     enable_pcg_selection : bool (optional)
         If True, a selection of pcgs is performed to determine which
         pcgs will be affected by inter-crystal breakage during one
         iteration of the weathering procedure. Larger volume pcgs will
         have a higher chance of being selected than smaller ones. If
         enabled, this option probably will slow down the model in
-        general.
+        general; defaults to False.
+    exclude_absent_minerals : bool (optional)
+        If True, minerals that have a proportion of zero in the provided
+        modal mineralogy will be excluded in their entiety from the
+        model; defaults to False.
+    auto_normalize_modal_mineralogy : bool (optional)
+        If True, the modal mineralogy will be automatically normalized;
+        defaults to False.
     """
 
     def __init__(self, minerals, parent_rock_volume, modal_mineralogy,
@@ -105,7 +114,8 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                  intra_cb_p=[0.5], intra_cb_thresholds=[1/256],
                  chem_weath_rates=[0.01], enable_interface_location_prob=True,
                  enable_multi_pcg_breakage=False, enable_pcg_selection=False,
-                 exclude_absent_minerals=False):
+                 exclude_absent_minerals=False,
+                 auto_normalize_modal_mineralogy=False):
 
         # ---------------------------------------------------------------------
         print("---SedGen model initialization started---\n")
@@ -121,6 +131,8 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         self.learning_rate = learning_rate
         self.exclude_absent_minerals = exclude_absent_minerals
 
+        # Excluding absent minerals from attributes
+        # =========================================
         if self.exclude_absent_minerals:
             self.present_minerals = np.where(self.modal_mineralogy != 0)[0]
             print(self.present_minerals)
@@ -175,8 +187,19 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         # ---------------------------------------------------------------------
         print("Initializing modal mineralogy...")
         # Assert that modal mineralogy proportions sum up to unity.
-        assert np.isclose(np.sum(modal_mineralogy), 1.0), \
-            "Modal mineralogy proportions do not sum to 1"
+        if not all(self.modal_mineralogy > 0):
+            raise ValueError("Provided modal mineralogy proportions should all"
+                             "be positive.")
+
+        if not np.isclose(np.sum(self.modal_mineralogy), 1.0):
+            if auto_normalize_modal_mineralogy:
+                self.modal_mineralogy = gen.normalize(self.modal_mineralogy)
+            else:
+                raise ValueError("Provided modal mineralogy proportions do not"
+                                 " sum to one. \nEither check them manually or"
+                                 " enable automatic normalization by setting"
+                                 " the 'auto_normalize_modal_mineralogy'"
+                                 " parameter to 'True'.")
 
         # Divide parent rock volume over all mineral classes based on
         # modal mineralogy
@@ -184,6 +207,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
         # ---------------------------------------------------------------------
         print("Initializing csds...")
+        # Assert that csd_means does not have any zero values
+        if not all(self.csd_means != 0.0):
+            raise ValueError("Provided CSD means should not be zero.")
         CrystalSizeMixin.__init__(self)
 
         # ---------------------------------------------------------------------

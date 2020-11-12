@@ -1,5 +1,4 @@
 import pytest
-import itertools
 import numpy as np
 
 import sedgen
@@ -13,7 +12,7 @@ __license__ = "mit"
 
 
 @pytest.fixture
-def fixture_mineral_classes():
+def fixture_dataset():
     modal_mineralogy_ = np.array([0.30591989, 0.38159713, 0.26209888,
                                   0.01882560, 0.00799247, 0.02356603])
     csd_means_ = np.array([0.309, 0.330, 0.244, 0.223, 0.120, 0.122])
@@ -33,8 +32,8 @@ def fixture_mineral_classes():
 
 
 class TestGetInterfaceLabels(object):
-    def test_correct_labels(self, fixture_mineral_classes):
-        actual = fixture_mineral_classes.get_interface_labels()
+    def test_correct_labels(self, fixture_dataset):
+        actual = fixture_dataset.get_interface_labels()
         expected = ['QQ', 'QP', 'QK', 'QB', 'QO', 'QA',
                           'PP', 'PK', 'PB', 'PO', 'PA',
                                 'KK', 'KB', 'KO', 'KA',
@@ -44,8 +43,8 @@ class TestGetInterfaceLabels(object):
 
         assert actual == expected
 
-    def test_correct_number_of_labels(self, fixture_mineral_classes):
-        actual = len(fixture_mineral_classes.get_interface_labels())
-        expected = np.sum(np.arange(fixture_mineral_classes.n_minerals+1))
+    def test_correct_number_of_labels(self, fixture_dataset):
+        actual = len(fixture_dataset.get_interface_labels())
+        expected = np.sum(np.arange(fixture_dataset.n_minerals+1))
 
         assert actual == pytest.approx(expected)
