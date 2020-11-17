@@ -12,7 +12,7 @@ class ModelEvolutionMixin:
 
         self.mcg = \
             np.zeros((self.n_timesteps, self.n_minerals, self.n_bins),
-                     dtype=np.uint32)
+                     dtype=np.uint64)
         self.residue = \
             np.zeros((self.n_timesteps, self.n_minerals), dtype=np.float64)
         self.residue_count = \
@@ -23,8 +23,8 @@ class ModelEvolutionMixin:
         self.pcg_chem_residue = 0
 
         self.pcg_additions = np.zeros(self.n_timesteps, dtype=np.uint32)
-        self.mcg_additions = np.zeros(self.n_timesteps, dtype=np.uint32)
-        self.mcg_broken_additions = np.zeros(self.n_timesteps, dtype=np.uint32)
+        self.mcg_additions = np.zeros(self.n_timesteps, dtype=np.uint64)
+        self.mcg_broken_additions = np.zeros(self.n_timesteps, dtype=np.uint64)
         self.residue_additions = \
             np.zeros((self.n_timesteps, self.n_minerals), dtype=np.float64)
         self.residue_count_additions = \
@@ -39,6 +39,6 @@ class ModelEvolutionMixin:
 
         self.mcg_evolution = \
             np.zeros((self.n_timesteps, self.n_minerals, self.n_bins),
-                     dtype=np.uint32)
+                     dtype=np.uint64)
 
         self.mass_balance = np.zeros(self.n_timesteps, dtype=np.float64)

@@ -432,18 +432,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
                     # If no pcgs are remaining anymore, stop the model
                     if not self.pcgs_new:
-                        print(f"After {step} steps all pcg have been broken"
-                              "down to mcg")
-                        return self.pcgs_new, self.mcg, self.pcg_additions, \
-                            self.mcg_additions, self.pcg_comp_evolution, \
-                            self.pcg_size_evolution, self.interface_counts_matrix, \
-                            self.crystal_size_array_new, \
-                            self.mcg_broken_additions, \
-                            self.residue_additions, \
-                            self.residue_count_additions, \
-                            self.pcg_chem_residue_additions, \
-                            self.mcg_chem_residue_additions, \
-                            self.mass_balance, self.mcg_evolution
+                        print(f"After {step} steps all pcgs have been broken"
+                              " down to mcg")
+                        return self
 
                 # To Do: Provide option for different speeds of chemical
                 # weathering per mineral class. This could be done by
@@ -693,7 +684,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         mcg_temp_matrix = np.zeros((self.n_timesteps,
                                     self.n_minerals,
                                     self.n_bins),
-                                   dtype=np.uint32)
+                                   dtype=np.uint64)
         for n, outer_list in enumerate(mcg_temp):
             for m, inner_list in enumerate(outer_list):
                 # print(type(inner_list), len(inner_list))
@@ -724,8 +715,8 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                     m_new, residue_add, residue_count_add = \
                         self.perform_intra_crystal_breakage_2d(
                             m_old,
-                            m, n,
-                            floor=alternator % 2,
+                            n, m,
+                            floor=False,
                             intra_cb_threshold_bin=self.intra_cb_threshold_bin_matrix[n, m]+start_bin_corr,
                             start_bin_corr=start_bin_corr)
                     mcg_new[n, m] = m_new
@@ -737,16 +728,59 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
         return mcg_new, residue_new, residue_count_new
 
-    def perform_intra_crystal_breakage_2d(self, mcg_old, m, n,
+    def perform_intra_crystal_breakage_2d(self, mcg_old, n, m,
                                           intra_cb_threshold_bin=200,
                                           floor=True, start_bin_corr=5):
+        """Performs intra-crystal breakage of mono-crystalline grains.
+        A mcg is thus broken in two along a predefined number of
+        possibilities via intra_cb_dict
+
+        Parameters:
+        -----------
+        mcg_old : np.array
+        n : int
+            Chemical weathering state index
+        m : int
+            Mineral class index
+        intra_cb_threshold_bin : int (optional)
+            Bin index below which no mechanical weathering occurs;
+            defaults to 200.
+        floor : bool (optional)
+            If True, the outcome of number of crystals in a bin
+            multiplied by the proportion of crystals in that bin to be
+            broken, will be floored. Most important effect from this parameter
+            occurs when this outcome is smaller than one and (if True)
+            no mcg will be broken in that bin; defaults to True.
+        start_bin_corr : int (optional)
+            Correction in bin index to make sure there are predefined
+            possibilities present in the intra_cb_dict for a certain
+            bin; defaults to 5.
+
+        Returns:
+        --------
+        mcg_new : np.array
+            Original mcg array updated with mcg numbers coming from
+            intra-crystal breakage of the mcg.
+        residue_new : float
+            Formed residue during intra-crystal breakage. This residue
+            stems from small mismatchs in the intra_cb_dict values. In
+            reality it could represent small particles coming free
+            during intra-crystal breakage.
+        residue_count : int
+            Number of formed 'residue particles'. One particle represent
+            one intra-crystal breakage operation of one mcg.
+        """
+
         # Certain percentage of mcg has to be selected for intra_cb
         # Since mcg are already binned it doesn't matter which mcg get
         # selected in a certain bin, only how many
 
+        # Proportion of crystals within a bin that will be selected
+        # for intra-crystal breakage.
         prob = self.intra_cb_p
-        search_bins = self.search_volume_bins_medians_matrix[m, n]
-        intra_cb_breaks = self.intra_cb_breaks_matrix[m, n]
+
+        search_bins = self.search_volume_bins_medians_matrix[n, m]
+        intra_cb_breaks = self.intra_cb_breaks_matrix[n, m]
         diffs_volumes = self.diffs_volumes_matrix[n, m]
 
         mcg_new = mcg_old.copy()
@@ -758,11 +792,11 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         if floor:
             # 1st time selection
             mcg_selected = \
-                np.floor(mcg_new * prob[m]).astype(np.uint32)
+                np.floor(mcg_new * prob[m]).astype(np.uint64)
         else:
             # 2nd time selection
             mcg_selected = \
-                np.ceil(mcg_new * prob[m]).astype(np.uint32)
+                np.ceil(mcg_new * prob[m]).astype(np.uint64)
 
         # Sliced so that only the mcg above the intra_cb_threshold_bin are
         # affected; same reasoning in for loop below.
@@ -782,7 +816,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
             breaker_counts = \
                 np.array([breaker_size] * intra_cb_breaks_to_use.size,
-                         dtype=np.uint32)
+                         dtype=np.uint64)
             breaker_counts[-1] += breaker_remainder
 
             p1 = i + intra_cb_threshold_bin \
@@ -901,7 +935,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
         self.mcg[chem_to_mcg[mcg_csize_ind],
                  pcg_to_mcg[mcg_csize_ind],
-                 mcg_csize_unq] += mcg_csize_cnt.astype(np.uint32)
+                 mcg_csize_unq] += mcg_csize_cnt.astype(np.uint64)
 
         # Interfaces counts
         pcg_concat_for_interfaces = \
