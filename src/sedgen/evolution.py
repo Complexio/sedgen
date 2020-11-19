@@ -41,4 +41,7 @@ class ModelEvolutionMixin:
             np.zeros((self.n_timesteps, self.n_minerals, self.n_bins),
                      dtype=np.uint64)
 
+        self.vol_mcg_evolution = np.zeros(self.n_timesteps, dtype=np.float64)
+        self.vol_pcg_evolution = np.zeros(self.n_timesteps, dtype=np.float64)
+        self.vol_residue_evolution = np.zeros(self.n_timesteps, dtype=np.float64)
         self.mass_balance = np.zeros(self.n_timesteps, dtype=np.float64)

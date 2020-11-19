@@ -392,7 +392,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             # What timestep we're at
             if timed:
                 tic = time.perf_counter()
-            print(f"{step}/{self.n_timesteps}", end="\r", flush=True)
+            print(f"{step+1}/{self.n_timesteps}", end="\r", flush=True)
 
             # Perform weathering operations
             for operation in operations:
@@ -499,14 +499,28 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             self.mcg_evolution[step] = np.sum(self.mcg, axis=0)
 
             # Mass balance check
+            vol_mcg = np.sum([self.volume_bins_medians_matrix * self.mcg])
+
+            vol_pcg = self.calculate_vol_pcg()
+
+            vol_residue = \
+                np.sum(self.residue_additions) + \
+                np.sum(self.pcg_chem_residue_additions) + \
+                np.sum(self.mcg_chem_residue_additions)
+
+            mass_balance = vol_pcg + vol_mcg + vol_residue
+
+            self.vol_mcg_evolution[step] = vol_mcg
+            self.vol_pcg_evolution[step] = vol_pcg
+            self.vol_residue_evolution[step] = vol_residue
+            self.mass_balance[step] = mass_balance
+
             if display_mass_balance:
-                vol_mcg = np.sum([self.volume_bins_medians_matrix * self.mcg])
                 print("vol_mcg_total:", vol_mcg, "over",
                       np.sum(self.mcg), "mcg")
-                vol_residue = \
-                    np.sum(self.residue_additions) + \
-                    np.sum(self.pcg_chem_residue_additions) + \
-                    np.sum(self.mcg_chem_residue_additions)
+
+                print("vol_pcg_total:", vol_pcg, "over",
+                      len(self.pcgs_new), "pcg")
 
                 print("mcg_intra_cb_residue_total:",
                       np.sum(self.residue_additions))
@@ -516,12 +530,6 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                       np.sum(self.mcg_chem_residue_additions))
                 print("vol_residue_total:", vol_residue)
 
-                vol_pcg = self.calculate_vol_pcg()
-                print("vol_pcg_total:", vol_pcg, "over",
-                      len(self.pcgs_new), "pcg")
-
-                mass_balance = vol_pcg + vol_mcg + vol_residue
-                self.mass_balance[step] = mass_balance
                 print(f"new mass balance after step {step}: {mass_balance}\n")
 
             # If no pcgs are remaining anymore, stop the model

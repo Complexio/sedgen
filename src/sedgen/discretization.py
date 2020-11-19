@@ -176,7 +176,7 @@ class McgBreakPatternMixin():
             np.zeros((self.n_timesteps, self.n_minerals), dtype='object')
 
         for n in range(self.n_timesteps):
-            print(n, end=", ")
+            print(f"{n+1}/{self.n_timesteps}", end="\r", flush=True)
             for m in range(self.n_minerals):
                 intra_cb_breaks_array = \
                     np.zeros(
