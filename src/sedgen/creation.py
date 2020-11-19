@@ -72,8 +72,10 @@ class MineralOccurenceMixin:
             crystals_array = np.array(crystals)
 
         crystals_binned = \
-            (np.searchsorted(self.volume_bins,
-                             crystals_array) - 1).astype(np.uint16)
+            search_sorted(self.volume_bins, crystals_array)
+        # crystals_binned = \
+        #     (np.searchsorted(self.volume_bins,
+        #                      crystals_array) - 1).astype(np.uint16)
 
         # Capture and correct crystals that fall outside
         # the leftmost bin as they end up as bin 0 but since 1 gets
@@ -84,6 +86,12 @@ class MineralOccurenceMixin:
         return crystals_total, np.sum(crystals_total), \
             total_volume_mineral, crystals_binned
 
+@nb.njit(cache=True)
+def search_sorted(volume_bins, crystals_array):
+    crystals_binned = \
+            (np.searchsorted(volume_bins,
+                             crystals_array) - 1).astype(np.uint16)
+    return crystals_binned
 
 class InterfaceOccurenceMixin:
     def __init__(self):
