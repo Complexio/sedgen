@@ -33,7 +33,7 @@ def clr(data):
     """Centred log ratio transformation"""
 
     log_data = np.log(data)
-    clr_data = np.subtract(log_data, np.mean(log_data, axis=1))
+    clr_data = log_data.subtract(np.mean(log_data, axis=1), axis=0)
 
     return clr_data
 
