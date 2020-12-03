@@ -55,6 +55,7 @@ class MineralOccurenceMixin:
             # +1 so that each time at least one crystal is requested
             crystals_requested = \
                 int(diff / (self.modal_mineralogy[m] * self.learning_rate)) + 1
+            # print(crystals_requested, end=", ")
 
             crystals_total += crystals_requested
             crystals_to_add = \
@@ -63,6 +64,7 @@ class MineralOccurenceMixin:
 
             crystals_append(gen.calculate_volume_sphere(crystals_to_add))
             total_volume_mineral += np.sum(crystals[rs])
+            # print(requested_volume, total_volume_mineral)
 
             rs += 1
 
@@ -121,10 +123,14 @@ class InterfaceOccurenceMixin:
 
     # To Do: add alpha factor to function to handle non-random interfaces
     def calculate_interface_proportions(self):
-        interface_proportions_pred = \
-            self.number_proportions * self.number_proportions.T
+        if self.interfacial_composition:
+            interface_proportions_true = self.interfacial_composition
+            return interface_proportions_true
 
-        return interface_proportions_pred
+        else:
+            interface_proportions_pred = \
+                self.number_proportions * self.number_proportions.T
+            return interface_proportions_pred
 
     def calculate_interface_frequencies(self):
         interface_frequencies = \

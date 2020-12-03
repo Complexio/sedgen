@@ -3,8 +3,8 @@
   <component name="ChangeListManager">
     <list default="true" id="6d9ce037-8506-4bbc-8562-f31ae2cab278" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/notebooks/1_Initialization.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/1_Initialization.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/sedgen/discretization.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/sedgen/discretization.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/sedgen/general.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/sedgen/general.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/SedGen_examples.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/SedGen_examples.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/sedgen/creation.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/sedgen/creation.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/sedgen/initialization.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/sedgen/initialization.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -52,6 +52,7 @@
       <workItem from="1580458695886" duration="28000" />
       <workItem from="1584093701492" duration="553000" />
       <workItem from="1603960649318" duration="7000" />
+      <workItem from="1606736689286" duration="4000" />
     </task>
     <servers />
   </component>
@@ -59,9 +60,9 @@
     <option name="version" value="1" />
   </component>
   <component name="WindowStateProjectService">
-    <state x="636" y="345" key="com.intellij.ide.util.TipDialog" timestamp="1603960653897">
+    <state x="636" y="345" key="com.intellij.ide.util.TipDialog" timestamp="1606736689272">
       <screen x="0" y="0" width="1920" height="1040" />
     </state>
-    <state x="636" y="345" key="com.intellij.ide.util.TipDialog/1920.0.1920.1040/0.0.1920.1040@0.0.1920.1040" timestamp="1603960653897" />
+    <state x="636" y="345" key="com.intellij.ide.util.TipDialog/1920.0.1920.1040/0.0.1920.1040@0.0.1920.1040" timestamp="1606736689272" />
   </component>
 </project>

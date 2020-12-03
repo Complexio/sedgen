@@ -187,9 +187,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         # ---------------------------------------------------------------------
         print("Initializing modal mineralogy...")
         # Assert that modal mineralogy proportions sum up to unity.
-        if not all(self.modal_mineralogy > 0):
+        if not (self.modal_mineralogy >= 0).all():
             raise ValueError("Provided modal mineralogy proportions should all"
-                             "be positive.")
+                             " be positive.")
 
         if not np.isclose(np.sum(self.modal_mineralogy), 1.0):
             if auto_normalize_modal_mineralogy:
@@ -289,11 +289,30 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         # grain, the more chance it has to be broken.
         self.interface_location_prob = \
             create_interface_location_prob(self.interface_array)
+
+        # --------------------------------------------------------------
+        # Interface stengths
+        # TODO: enable option to specify crystal strengths or read them
+        # from a file e.g.
+        # Other option would be to start from interface strengths and
+        # not calculate them from the crystal strengths as this might be
+        # to simplistic.
+        self.crystal_strengths = \
+            np.array([1, 2, 0.8, 2.5, 4, 3])
+
+        self.crystal_strengths_normalized = \
+            gen.normalize(self.crystal_strengths).reshape(-1, 1)
+
+        self.interface_strengths = \
+            self.crystal_strengths_normalized * \
+            self.crystal_strengths_normalized.T
+
+        # --------------------------------------------------------------
         # The higher the strength of an interface, the less chance it
         # has to be broken.
         self.interface_strengths_prob = \
             gen.get_interface_strengths_prob(
-                self.interface_proportions_normalized,
+                self.interface_strengths,
                 self.interface_array)
         # The bigger an interface is, the more chance it has to be
         # broken.
@@ -450,6 +469,8 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                               np.sum(np.sum(self.mcg, axis=2), axis=0))
                         print("mcg_chem_residue after chem_mcg",
                               self.mcg_chem_residue)
+                    self.mcg_chem_residue_additions[step] = \
+                        self.mcg_chem_residue
                     if timed:
                         toc_chem_mcg = time.perf_counter()
 
@@ -468,6 +489,8 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                         self.pcg_chem_residue, \
                         self.interface_counts_matrix = \
                         self.chemical_weathering_pcg()
+                    self.pcg_chem_residue_additions[step] = \
+                        self.pcg_chem_residue
                     if timed:
                         toc_chem_pcg = time.perf_counter()
 
