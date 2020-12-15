@@ -1087,7 +1087,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         volumes = self.volume_bins_medians_matrix[chem_state_array,
                                                   pcg_array,
                                                   csize_array]
-        volume_counts = gen.weighted_bin_count(pcg_array, volumes)
+        volume_counts = gen.weighted_bin_count(pcg_array, volumes, ml=0)
         modal_mineralogy = gen.normalize(volume_counts)
 
         if return_volumes:
