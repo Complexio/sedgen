@@ -135,7 +135,7 @@ class BinsMatricesMixin():
         bins_matrix = \
             np.array([[bins - n * self.chem_weath_rates[m]
                       for m in range(self.n_minerals)]
-                     for n in range(self.n_timesteps)])
+                     for n in range(self.n_steps)])
 
         return bins_matrix
 
@@ -155,8 +155,8 @@ class McgBreakPatternMixin():
         # Create array with corresponding bins to intra_cb_thesholds
         # for matrix of bin arrays
         self.intra_cb_threshold_bin_matrix = \
-            np.zeros((self.n_timesteps, self.n_minerals), dtype=np.uint16)
-        for n in range(self.n_timesteps):
+            np.zeros((self.n_steps, self.n_minerals), dtype=np.uint16)
+        for n in range(self.n_steps):
             for m in range(self.n_minerals):
                 self.intra_cb_threshold_bin_matrix[n, m] = \
                     np.argmax(self.size_bins_medians_matrix[n, m] >
@@ -171,12 +171,12 @@ class McgBreakPatternMixin():
         # chemical weathering --> implement chemical weathering rates
         # into the function somehow.
         intra_cb_breaks_matrix = \
-            np.zeros((self.n_timesteps, self.n_minerals), dtype='object')
+            np.zeros((self.n_steps, self.n_minerals), dtype='object')
         diffs_volumes_matrix = \
-            np.zeros((self.n_timesteps, self.n_minerals), dtype='object')
+            np.zeros((self.n_steps, self.n_minerals), dtype='object')
 
-        for n in range(self.n_timesteps):
-            print(f"{n+1}/{self.n_timesteps}", end="\r", flush=True)
+        for n in range(self.n_steps):
+            print(f"{n+1}/{self.n_steps}", end="\r", flush=True)
             for m in range(self.n_minerals):
                 intra_cb_breaks_array = \
                     np.zeros(

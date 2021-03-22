@@ -20,7 +20,7 @@ from sedgen.creation import MineralOccurenceMixin, InterfaceOccurenceMixin, Crys
     - Change intra_cb_p to a function so that smaller crystal sizes have
      a smaller chance of intra_cb breakage and bigger ones a higher
      chance.
-    - Implement generalization of intra_cb breakage; instead of
+    - OK Implement generalization of intra_cb breakage; instead of
     performing operation per selected mcg in certain bin, perform the
     operation on all selected mcg at same time. This can be done as the
     random location for intra_cb breakage stems from a discrete uniform
@@ -59,7 +59,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         mineral class; defaults to 1000
     timed : bool (optional)
         Show timings of various initialization steps; defaults to False
-    n_timesteps : int
+    n_steps : int
         Number of iterations for the for loop which executes the given
         weathering processes
     n_standard_cases : int (optional)
@@ -110,9 +110,11 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
     def __init__(self, minerals, parent_rock_volume, modal_mineralogy,
                  csd_means, csd_stds, interfacial_composition=None,
                  learning_rate=1000, timed=False, discretization_init=True,
-                 n_timesteps=100, n_standard_cases=2000,
+                 n_steps=100, n_standard_cases=2000,
                  intra_cb_p=[0.5], intra_cb_thresholds=[1/256],
-                 chem_weath_rates=[0.01], enable_interface_location_prob=True,
+                 chem_weath_rates=[0.01],
+                 crystal_strengths=[5, 2, 0.8, 2.5, 4, 3],
+                 enable_interface_location_prob=True,
                  enable_multi_pcg_breakage=False, enable_pcg_selection=False,
                  exclude_absent_minerals=False,
                  auto_normalize_modal_mineralogy=False):
@@ -149,7 +151,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
         # Second group of model parameters
         # ================================
-        self.n_timesteps = n_timesteps
+        self.n_steps = n_steps
         self.n_standard_cases = n_standard_cases
         self.enable_interface_location_prob = enable_interface_location_prob
         self.enable_multi_pcg_breakage = enable_multi_pcg_breakage
@@ -298,7 +300,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         # not calculate them from the crystal strengths as this might be
         # to simplistic.
         self.crystal_strengths = \
-            np.array([1, 2, 0.8, 2.5, 4, 3])
+            np.array(crystal_strengths)
 
         self.crystal_strengths_normalized = \
             gen.normalize(self.crystal_strengths).reshape(-1, 1)
@@ -338,7 +340,8 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         output = f"SedGen({self.minerals}, {self.parent_rock_volume}, " \
                  f"{self.modal_mineralogy}, {self.csd_means}, " \
                  f"{self.csd_stds}, {self.interfacial_composition}, " \
-                 f"{self.learning_rate}"
+                 f"{self.learning_rate}, {self.crystal_strengths}, " \
+                 f"{self.chem_weath_rates}"
         return output
 
     def mineral_property_setter(self, p):
@@ -401,7 +404,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         self = self if inplace else copy.copy(self)
 
         if not timesteps:
-            timesteps = self.n_timesteps
+            timesteps = self.n_steps
 
         mcg_broken = np.zeros_like(self.mcg)
         if timed:
@@ -411,7 +414,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             # What timestep we're at
             if timed:
                 tic = time.perf_counter()
-            print(f"{step+1}/{self.n_timesteps}", end="\r", flush=True)
+            print(f"{step+1}/{self.n_steps}", end="\r", flush=True)
 
             # Perform weathering operations
             for operation in operations:
@@ -476,7 +479,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
                 elif operation == "chem_pcg":
                     # Don't perform chemical weathering of pcg in first
-                    # timestep. Otherwise n_timesteps+1 bin arrays need
+                    # timestep. Otherwise n_steps+1 bin arrays need
                     # to be initialized.
                     if step == 0:
                         toc_chem_pcg = time.perf_counter()
@@ -640,7 +643,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
         mcg_temp = [[[]
                     for m in range(self.n_minerals)]
-                    for n in range(self.n_timesteps)]
+                    for n in range(self.n_steps)]
     #         interface_indices = List()
 
         for i, (pcg, prob, csize, chem) in enumerate(
@@ -712,7 +715,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                 # interface_indices.append((pcg[interface-1], pcg[interface]))
 
         # Add counts from mcg_temp to mcg
-        mcg_temp_matrix = np.zeros((self.n_timesteps,
+        mcg_temp_matrix = np.zeros((self.n_steps,
                                     self.n_minerals,
                                     self.n_bins),
                                    dtype=np.uint64)
@@ -734,11 +737,11 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
     def intra_crystal_breakage_binned(self, alternator, start_bin_corr=5):
         mcg_new = np.zeros_like(self.mcg)
         residue_new = \
-            np.zeros((self.n_timesteps, self.n_minerals), dtype=np.float64)
+            np.zeros((self.n_steps, self.n_minerals), dtype=np.float64)
         residue_count_new = \
-            np.zeros((self.n_timesteps, self.n_minerals), dtype=np.uint32)
+            np.zeros((self.n_steps, self.n_minerals), dtype=np.uint32)
 
-        for n in range(self.n_timesteps):
+        for n in range(self.n_steps):
             for m, m_old in enumerate(self.mcg[n]):
                 if all(m_old == 0):
                     mcg_new[n, m] = m_old
@@ -871,7 +874,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         # Redisue
         # 1. Residue from mcg being in a negative grain size class
         residue_1 = np.zeros(self.n_minerals, dtype=np.float64)
-        for n in range(1, self.n_timesteps):
+        for n in range(1, self.n_steps):
             for m in range(self.n_minerals):
                 threshold = self.negative_volume_thresholds[n, m]
                 residue_1[m] += \
