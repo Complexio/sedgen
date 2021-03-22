@@ -1,5 +1,6 @@
 import numpy as np
 import numba as nb
+import pandas as pd
 
 import time
 import warnings
@@ -28,6 +29,10 @@ from sedgen.creation import MineralOccurenceMixin, InterfaceOccurenceMixin, Crys
     - Would be nice to work with masked arrays for the bin arrays to
     mask negative values, but unfortunately numba does not yet provide
     support for masked arrays.
+    - Include 5th column in scenario file which indicates the time
+    duration of that step. The default value would be 1, and a higher
+    value would mean a speedup of the chemical weathering, acting as a
+    multiplier on the actual chemical weathering rates.
 """
 
 
@@ -54,6 +59,12 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         Crystal size standard deviations of mineral classes in mm
     interfacial_composition : np.array (optional)
         Observed crystal interface proportions
+    scenario_data : str (optional)
+        Filename (with extension) of scenario to be used in model
+        A scenario file can be used to set the weathering balance,
+        climate class and new material inpur per step in the model.
+        If no file is provided, default values of 0.5, C and 0.0 will be
+        used throughout the model.
     learning_rate : int (optional)
         Amount of change used during determination of N crystals per
         mineral class; defaults to 1000
@@ -80,6 +91,8 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         'mm/year'. This is scaled internally to be implemented in a
         relative manner; defaults to [0.01] to use 0.01 mm/yr for all
         mineral classes as chemical weathering rate.
+    mineral_strengths : list(float) (optional)
+        List of relative mineral strengths.
     enable_interface_location_prob : bool (optional)
         If True, the location of an interface along a pcg, will have an
         effect on its probability of breakage during inter-crystal
@@ -109,11 +122,12 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
     def __init__(self, minerals, parent_rock_volume, modal_mineralogy,
                  csd_means, csd_stds, interfacial_composition=None,
-                 learning_rate=1000, timed=False, discretization_init=True,
+                 scenario_data=None, learning_rate=1000, timed=False,
+                 discretization_init=True,
                  n_steps=100, n_standard_cases=2000,
                  intra_cb_p=[0.5], intra_cb_thresholds=[1/256],
                  chem_weath_rates=[0.01],
-                 crystal_strengths=[5, 2, 0.8, 2.5, 4, 3],
+                 mineral_strengths=[5, 2, 0.8, 2.5, 4, 3],
                  enable_interface_location_prob=True,
                  enable_multi_pcg_breakage=False, enable_pcg_selection=False,
                  exclude_absent_minerals=False,
@@ -185,6 +199,21 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                 np.array([create_interface_location_prob(
                     np.arange(x)) for x in range(1, self.n_standard_cases+1)],
                     dtype=np.object)
+
+        # Scenario file model parameters:
+        # ===============================
+        # Check if scenario file has been provided
+        self.scenario_data = scenario_data
+
+        if self.scenario_data is None:
+            self.scenario_balance = np.array([0.5] * self.n_steps)
+            self.scenario_climate = np.array([2] * self.n_steps)
+            self.scenario_input = np.zeros(self.n_steps)
+        else:
+            scenario = self.read_scenario()
+            self.scenario_balance = scenario[:, 0]
+            self.scenario_climate = scenario[:, 1]
+            self.scenario_input = scenario[:, 2]
 
         # ---------------------------------------------------------------------
         print("Initializing modal mineralogy...")
@@ -299,15 +328,15 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         # Other option would be to start from interface strengths and
         # not calculate them from the crystal strengths as this might be
         # to simplistic.
-        self.crystal_strengths = \
-            np.array(crystal_strengths)
+        self.mineral_strengths = \
+            np.array(mineral_strengths)
 
-        self.crystal_strengths_normalized = \
-            gen.normalize(self.crystal_strengths).reshape(-1, 1)
+        self.mineral_strengths_normalized = \
+            gen.normalize(self.mineral_strengths).reshape(-1, 1)
 
         self.interface_strengths = \
-            self.crystal_strengths_normalized * \
-            self.crystal_strengths_normalized.T
+            self.mineral_strengths_normalized * \
+            self.mineral_strengths_normalized.T
 
         # --------------------------------------------------------------
         # The higher the strength of an interface, the less chance it
@@ -340,9 +369,96 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         output = f"SedGen({self.minerals}, {self.parent_rock_volume}, " \
                  f"{self.modal_mineralogy}, {self.csd_means}, " \
                  f"{self.csd_stds}, {self.interfacial_composition}, " \
-                 f"{self.learning_rate}, {self.crystal_strengths}, " \
+                 f"{self.learning_rate}, {self.mineral_strengths}, " \
                  f"{self.chem_weath_rates}"
         return output
+
+    def read_scenario(self, scenario_folder="_DATA/scenarios"):
+        """Reads the scenario file to use for SedGen model
+
+        Parameters:
+        -----------
+        scenario_data : str or np.array or pd.DataFrame
+            Filename of scenario file with extension OR
+            numpy array with scenario data OR
+            pandas datadrame with scenario data
+
+            Data should be in a spreadsheet style consisting of
+            minimally n_steps rows and four columns where:
+                - First column = 'Step'
+                    Sequence of steps in the model.
+                - Second column: 'Balance'
+                    Balance between mechanical weathering and chemical
+                    weathering provided as a proportion.
+                - Third column: 'Climate'
+                    Primary Köppen classifaction class to use during step
+                    lower classifications letters can be supplied but are
+                    ignored for now.
+                - Fourth column: 'New_input'
+                    Proportion of the initial parent_rock_volume to be added
+                    during step.
+        scenario_folder : str (optional)
+            Path to folder where the scenario file lives
+
+        Returns:
+        --------
+        scenario_values = np.array
+            Values to be used for balance, climate and new_input as per the
+            scenario"""
+
+        def scenario_cleaning(scenario_df):
+            """Cleans scenario data when it is in DataFrame format"""
+
+            # Rename columns
+            scenario_df.columns = ["Step", "Balance", "Climate", "New_input"]
+
+            # Strip any tailing classification letter of climate and only keep
+            # primary class
+            scenario_df["Climate"] = scenario_df["Climate"].str[0]
+            # Make sure climate class is upper case
+            scenario_df["Climate"] = scenario_df["Climate"].str.upper()
+            # Map climate classes to numbers
+            scenario_df["Climate"] = scenario_df["Climate"].map(climate_mapper)
+
+            scenario_df = scenario_df.set_index("Step")
+            scenario_values = scenario_df.values
+
+            return scenario_values
+
+        # Initiliaze climate mapper
+        climate_mapper = {"A": 0,
+                          "B": 1,
+                          "C": 2,
+                          "D": 3,
+                          "E": 4}
+
+        if isinstance(self.scenario_data, np.ndarray):
+            scenario_values = self.scenario_data
+        elif isinstance(self.scenario_data, pd.DataFrame):
+            scenario_values = scenario_cleaning(self.scenario_data)
+        else:
+            # Check file extension and read accordingly
+            if self.scenario_data.endswith("xlsx"):
+                scenario_df = \
+                    pd.read_excel(f"{scenario_folder}/{self.scenario_data}")
+            elif self.scenario_data.endswith("csv"):
+                scenario_df = \
+                    pd.read_csv(f"{scenario_folder}/{self.scenario_data}")
+                # Check to see if read in worked, otherwise use
+                # different separator
+                if "Climate" not in scenario_df.columns:
+                    scenario_df = \
+                        pd.read_csv(f"{scenario_folder}/{self.scenario_data}",
+                                    sep=";")
+            else:
+                raise FileNotFoundError("Filetype must be of type 'xlsx' or 'csv'")
+
+            scenario_values = scenario_cleaning(self.scenario_df)
+
+        # Only keep n_steps rows
+        scenario_values = scenario_values[:self.n_steps]
+
+        return scenario_values
 
     def mineral_property_setter(self, p):
         """Assigns a specified property to multiple mineral classes if
