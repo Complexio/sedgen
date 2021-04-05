@@ -45,3 +45,5 @@ class ModelEvolutionMixin:
         self.vol_pcg_evolution = np.zeros(self.n_steps, dtype=np.float64)
         self.vol_residue_evolution = np.zeros(self.n_steps, dtype=np.float64)
         self.mass_balance = np.zeros(self.n_steps, dtype=np.float64)
+
+        self.new_material_volumes = np.zeros(self.n_steps, dtype=np.float64)

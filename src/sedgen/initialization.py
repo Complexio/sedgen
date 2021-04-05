@@ -81,6 +81,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         mono-crystalline grains per size bin will be effected by
         intra-crystal breakage every timestep; defaults to [0.5] to use
         0.5 for all present mineral classes
+        Multiplied with (1 - normalize(mineral_strengths)) these
+        proportions will dictate the balance in intra-crystal breakage
+        between mineral classes.
     intra_cb_thresholds : list(float) (optional)
         List of intra-crystal breakage size thresholds of mineral
         classes to specify that under the given theshold, intra_crystal
@@ -322,17 +325,19 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             create_interface_location_prob(self.interface_array)
 
         # --------------------------------------------------------------
-        # Interface stengths
-        # TODO: enable option to specify crystal strengths or read them
-        # from a file e.g.
-        # Other option would be to start from interface strengths and
-        # not calculate them from the crystal strengths as this might be
-        # to simplistic.
+        # Mineral and Interface stengths
+        # Other option would be to start from provided interface
+        # strengths and not calculate them from the mineral strengths
+        # as this might be too simplistic.
         self.mineral_strengths = \
             np.array(mineral_strengths)
 
         self.mineral_strengths_normalized = \
             gen.normalize(self.mineral_strengths).reshape(-1, 1)
+
+        # Set intra_cb balance
+        self.intra_cb_balance = \
+            self.intra_cb_p * (1 - self.mineral_strengths_normalized)
 
         self.interface_strengths = \
             self.mineral_strengths_normalized * \
@@ -531,6 +536,56 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             if timed:
                 tic = time.perf_counter()
             print(f"{step+1}/{self.n_steps}", end="\r", flush=True)
+
+            # Select new parent rock material to be added from main
+            # parent rock material
+            if self.scenario_input[step] > 0.0:
+                # required_new_material_volume = \
+                #     self.parent_rock_volume * self.scenario_input[step]
+
+                n_crystals_new_material = \
+                    int(self.N_crystals * self.scenario_input[step])
+
+                crystal_loc_selector = np.random.RandomState(step)
+                random_crystal_start = \
+                    crystal_loc_selector.randint(
+                        0, self.N_crystals - n_crystals_new_material)
+
+                new_material_pcgs = self.interface_array[
+                    random_crystal_start:
+                    random_crystal_start+n_crystals_new_material]
+                new_material_crystal_sizes = self.crystal_size_array[
+                    random_crystal_start:
+                    random_crystal_start+n_crystals_new_material]
+                new_material_interface_prob = self.interface_constant_prob[
+                    random_crystal_start:
+                    random_crystal_start+n_crystals_new_material-1]
+                new_material_chem_weath_array = \
+                    np.array([0] * n_crystals_new_material, dtype='uint8')
+
+                # Check output of new material input
+                # print(new_material_pcgs.shape, new_material_crystal_sizes.shape, new_material_interface_prob.shape, new_material_chem_weath_array.shape)
+
+                actual_new_material_volume = \
+                    np.sum(self.volume_bins_medians[
+                        self.crystal_size_array_new[0][
+                            :n_crystals_new_material]])
+
+                self.new_material_volumes[step] = actual_new_material_volume
+
+                # Add new material to arrays of model
+                self.pcgs_new.append(new_material_pcgs)
+                self.crystal_size_array_new.append(new_material_crystal_sizes)
+                self.interface_constant_prob_new.append(
+                    new_material_interface_prob)
+                self.pcg_chem_weath_array_new.append(
+                    new_material_chem_weath_array)
+
+                # Check output of new material input
+                # print([arr.shape for arr in self.pcgs_new])
+                # print([arr.shape for arr in self.crystal_size_array_new])
+                # print([arr.shape for arr in self.interface_constant_prob_new])
+                # print([arr.shape for arr in self.pcg_chem_weath_array_new])
 
             # Perform weathering operations
             for operation in operations:
@@ -927,7 +982,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
         # Proportion of crystals within a bin that will be selected
         # for intra-crystal breakage.
-        prob = self.intra_cb_p
+        prob = self.intra_cb_balance
 
         search_bins = self.search_volume_bins_medians_matrix[n, m]
         intra_cb_breaks = self.intra_cb_breaks_matrix[n, m]
