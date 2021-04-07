@@ -9,17 +9,17 @@ from sedgen import general as gen
 
 class MineralOccurenceMixin:
     def __init__(self):
-        self.minerals_N, self.simulated_volume, \
-            self.crystal_sizes_per_mineral = \
+        self.pr_minerals_N, self.pr_simulated_volume, \
+            self.pr_crystal_sizes_per_mineral = \
             self.create_N_crystals()
 
-        self.mass_balance_initial = np.sum(self.simulated_volume)
-        self.N_crystals = np.sum(self.minerals_N)
+        self.pr_mass_balance_initial = np.sum(self.pr_simulated_volume)
+        self.pr_N_crystals = np.sum(self.pr_minerals_N)
 
     def create_N_crystals(self):
         minerals_N = {}
         print("|", end="")
-        for m, n in enumerate(self.minerals):
+        for m, n in enumerate(self.pr_minerals):
             print(n, end="|")
             minerals_N[n] = \
                 self.simulate_N_crystals(m=m)
@@ -41,7 +41,7 @@ class MineralOccurenceMixin:
         of parent rock.
         """
         total_volume_mineral = 0
-        requested_volume = self.modal_volume[m]
+        requested_volume = self.pr_modal_volume[m]
         crystals = []
         crystals_append = crystals.append
         crystals_total = 0
@@ -54,12 +54,12 @@ class MineralOccurenceMixin:
             # ‘m’ represents the current mineral class
             # +1 so that each time at least one crystal is requested
             crystals_requested = \
-                int(diff / (self.modal_mineralogy[m] * self.learning_rate)) + 1
+                int(diff / (self.pr_modal_mineralogy[m] * self.learning_rate)) + 1
             # print(crystals_requested, end=", ")
 
             crystals_total += crystals_requested
             crystals_to_add = \
-                np.exp(self.csds[m].rvs(size=crystals_requested,
+                np.exp(self.pr_csds[m].rvs(size=crystals_requested,
                                         random_state=rs))
 
             crystals_append(gen.calculate_volume_sphere(crystals_to_add))
@@ -89,21 +89,21 @@ class MineralOccurenceMixin:
 
 class InterfaceOccurenceMixin:
     def __init__(self):
-        self.interfaces = self.get_interface_labels()
-        self.number_proportions = self.calculate_number_proportions()
-        self.interface_proportions = self.calculate_interface_proportions()
-        self.interface_proportions_normalized = \
+        self.pr_interfaces = self.get_interface_labels()
+        self.pr_number_proportions = self.calculate_number_proportions()
+        self.pr_interface_proportions = self.calculate_interface_proportions()
+        self.pr_interface_proportions_normalized = \
             self.calculate_interface_proportions_normalized()
-        self.interface_frequencies = self.calculate_interface_frequencies()
-        self.interface_frequencies = \
+        self.pr_interface_frequencies = self.calculate_interface_frequencies()
+        self.pr_interface_frequencies = \
             self.perform_interface_frequencies_correction()
 
-        self.transitions_per_mineral = \
+        self.pr_transitions_per_mineral = \
             self.create_transitions_per_mineral_correctly()
 
-        self.interface_array = \
-            create_interface_array(self.minerals_N,
-                                   self.transitions_per_mineral)
+        self.pr_crystals = \
+            create_interface_array(self.pr_minerals_N,
+                                   self.pr_transitions_per_mineral)
 
     def get_interface_labels(self):
         """Returns list of combinations of interfaces between provided
@@ -113,35 +113,35 @@ class InterfaceOccurenceMixin:
 
         interface_labels = \
             ["".join(pair) for pair in
-             itertools.combinations_with_replacement(self.minerals, 2)]
+             itertools.combinations_with_replacement(self.pr_minerals, 2)]
 
         return interface_labels
 
     def calculate_number_proportions(self):
         """Returns number proportions"""
-        return gen.normalize(self.minerals_N).reshape(-1, 1)
+        return gen.normalize(self.pr_minerals_N).reshape(-1, 1)
 
     # To Do: add alpha factor to function to handle non-random interfaces
     def calculate_interface_proportions(self):
-        if self.interfacial_composition:
-            interface_proportions_true = self.interfacial_composition
+        if self.pr_interfacial_composition:
+            interface_proportions_true = self.pr_interfacial_composition
             return interface_proportions_true
 
         else:
             interface_proportions_pred = \
-                self.number_proportions * self.number_proportions.T
+                self.pr_number_proportions * self.pr_number_proportions.T
             return interface_proportions_pred
 
     def calculate_interface_frequencies(self):
         interface_frequencies = \
-            np.round(self.interface_proportions * (self.N_crystals - 1))\
+            np.round(self.pr_interface_proportions * (self.pr_N_crystals - 1))\
               .astype(np.uint32)
         return interface_frequencies
 
     def calculate_interface_proportions_normalized(self):
         interface_proportions_normalized = \
-            np.divide(self.interface_proportions,
-                      np.sum(self.interface_proportions, axis=1).reshape(-1, 1)
+            np.divide(self.pr_interface_proportions,
+                      np.sum(self.pr_interface_proportions, axis=1).reshape(-1, 1)
                       )
         return interface_proportions_normalized
 
@@ -152,13 +152,16 @@ class InterfaceOccurenceMixin:
         to fill the interface array later on."""
         transitions_per_mineral = []
 
-        iterable = self.interface_frequencies.copy()
+        iterable = self.pr_interface_frequencies.copy()
 
-        prng = np.random.default_rng(random_seed)
+        if self.fixed_random_seeds:
+            prng = np.random.default_rng(random_seed)
+        else:
+            prng = np.random.default_rng()
         print("|", end="")
         for i, row in enumerate(iterable):
-            print(self.minerals[i], end="|")
-            N = self.minerals_N[i] + corr
+            print(self.pr_minerals[i], end="|")
+            N = self.pr_minerals_N[i] + corr
             c = prng.random(size=N)
             transitions_per_mineral.append(
                 create_transitions_correctly(row, c, N))
@@ -166,8 +169,8 @@ class InterfaceOccurenceMixin:
         return tuple(transitions_per_mineral)
 
     def perform_interface_frequencies_correction(self):
-        interface_frequencies_corr = self.interface_frequencies.copy()
-        diff = np.sum(self.interface_frequencies) - (self.N_crystals - 1)
+        interface_frequencies_corr = self.pr_interface_frequencies.copy()
+        diff = np.sum(self.pr_interface_frequencies) - (self.pr_N_crystals - 1)
         interface_frequencies_corr[0, 0] -= int(diff)
 
         return interface_frequencies_corr
@@ -176,18 +179,18 @@ class InterfaceOccurenceMixin:
         """Remove or add crystals from/to interface_array where
         necessary
         """
-        interface_array_corr = self.interface_array.copy()
+        interface_array_corr = self.pr_crystals.copy()
         prob_unit = 1
         # interface_pairs_corr = self.interface_pairs.copy()
-        interface_frequencies_corr = self.interface_counts_matrix.copy()
-        diff = [np.sum(self.interface_array == x)
-                for x in range(self.n_minerals)] - self.minerals_N
+        interface_frequencies_corr = self.pr_interface_counts_matrix.copy()
+        diff = [np.sum(self.pr_crystals == x)
+                for x in range(self.pr_n_minerals)] - self.pr_minerals_N
         # print("diff", diff)
         # print(interface_frequencies_corr)
 
         for index, item in enumerate(diff):
             if item > 0:
-                print("too much", self.minerals[index], item)
+                print("too much", self.pr_minerals[index], item)
                 # Select exceeding number crystals from end of array
                 for i in range(item):
                     # Select index to correct
@@ -230,7 +233,7 @@ class InterfaceOccurenceMixin:
                     # print(interface_frequencies_corr)
 
             elif item < 0:
-                print("too few", self.minerals[index], item)
+                print("too few", self.pr_minerals[index], item)
                 # Add newly formed interfaces to interface_frequencies_corr
                 pair_index = (interface_array_corr[-1], index)
                 interface_frequencies_corr[pair_index] += prob_unit
@@ -245,7 +248,7 @@ class InterfaceOccurenceMixin:
                 # print(interface_array_corr[-100:])
                 # print(interface_frequencies_corr)
             else:
-                print("all good", self.minerals[index], item)
+                print("all good", self.pr_minerals[index], item)
                 pass
 
         return interface_array_corr, interface_frequencies_corr
@@ -316,8 +319,8 @@ def create_interface_array(minerals_N, transitions_per_mineral):
 
 class CrystalSizeMixin:
     def __init__(self):
-        self.csds = np.array([self.initialize_csd(m)
-                              for m in range(self.n_minerals)])
+        self.pr_csds = np.array([self.initialize_csd(m)
+                              for m in range(self.pr_n_minerals)])
 
     def initialize_csd(self, m, trunc_left=1/256, trunc_right=30):
         """Initalizes the truncated lognormal crystal size distribution
@@ -339,8 +342,8 @@ class CrystalSizeMixin:
             Truncated lognormal crystal size distribution
         """
 
-        mean = np.log(self.csd_means[m])
-        std = np.exp(self.csd_stds[m])
+        mean = np.log(self.pr_csd_means[m])
+        std = np.exp(self.pr_csd_stds[m])
 
         if not np.isinf(trunc_left):
             trunc_left = np.log(trunc_left)
@@ -358,15 +361,15 @@ class CrystalSizeMixin:
         performed, the sizes are allocated according to the mineral
         order in the minerals/interfaces array
         """
-        crystal_size_array = np.zeros(self.interface_array.shape,
+        crystal_size_array = np.zeros(self.pr_crystals.shape,
                                       dtype=np.uint16)
 
         # Much faster way (6s) to create crystal size labels array than
         # to use modified function of interfaces array creating (1m40s)!
         print("|", end="")
-        for i, mineral in enumerate(self.minerals):
+        for i, mineral in enumerate(self.pr_minerals):
             print(mineral, end="|")
-            crystal_size_array[np.where(self.interface_array == i)] = \
-                self.crystal_sizes_per_mineral[i]
+            crystal_size_array[np.where(self.pr_crystals == i)] = \
+                self.pr_crystal_sizes_per_mineral[i]
 
         return crystal_size_array

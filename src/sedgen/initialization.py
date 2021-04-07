@@ -43,6 +43,13 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
     modal mineralogy, interfacial composition and crystal size
     statistics
 
+    Variables that have a prefix of one of the below belong to a certain
+    group, otherwise the variable can be considered to belong directly
+    to the model itself:
+        - pr  : parent rock
+        - pcg : poly-crystalline grain
+        - mcg : mono-crystalline grain
+
     Parameters:
     -----------
     minerals : list
@@ -121,6 +128,14 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
     auto_normalize_modal_mineralogy : bool (optional)
         If True, the modal mineralogy will be automatically normalized;
         defaults to False.
+    fixed_random_seeds : bool (optional)
+        If True, the random seeds for the entire model are fixed meaning
+        they are either equal to the model's step number or to a preset
+        number within the code. These fixed states can thus be used to
+        track a model's evolution repeatedly without having to worry
+        about different random number generator outcomes. When set to
+        False, all random number generators will use a random seed.
+        Defaults to True.
     """
 
     def __init__(self, minerals, parent_rock_volume, modal_mineralogy,
@@ -134,37 +149,40 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                  enable_interface_location_prob=True,
                  enable_multi_pcg_breakage=False, enable_pcg_selection=False,
                  exclude_absent_minerals=False,
-                 auto_normalize_modal_mineralogy=False):
+                 auto_normalize_modal_mineralogy=False,
+                 fixed_random_seeds=True):
 
         # ---------------------------------------------------------------------
         print("---SedGen model initialization started---\n")
         # First group of model parameters
         # ===============================
-        self.minerals = minerals
-        self.n_minerals = len(self.minerals)
-        self.parent_rock_volume = parent_rock_volume
-        self.modal_mineralogy = modal_mineralogy
-        self.csd_means = csd_means
-        self.csd_stds = csd_stds
-        self.interfacial_composition = interfacial_composition
+        self.pr_minerals = minerals
+        self.pr_n_minerals = len(self.pr_minerals)
+        self.pr_initial_volume = parent_rock_volume
+        self.pr_modal_mineralogy = modal_mineralogy
+        self.pr_csd_means = csd_means
+        self.pr_csd_stds = csd_stds
+        self.pr_interfacial_composition = interfacial_composition
         self.learning_rate = learning_rate
         self.exclude_absent_minerals = exclude_absent_minerals
+        self.fixed_random_seeds = fixed_random_seeds
 
         # Excluding absent minerals from attributes
         # =========================================
         if self.exclude_absent_minerals:
-            self.present_minerals = np.where(self.modal_mineralogy != 0)[0]
-            print(self.present_minerals)
-            self.minerals = \
-                list(np.array(self.minerals)[self.present_minerals])
-            self.n_minerals = len(self.minerals)
-            self.modal_mineralogy = \
-                self.modal_mineralogy[self.present_minerals]
-            self.csd_means = self.csd_means[self.present_minerals]
-            self.csd_stds = self.csd_stds[self.present_minerals]
-            if self.interfacial_composition:
-                self.interfacial_composition = \
-                    self.interfacial_composition[self.present_minerals][:, self.present_minerals]
+            self.pr_present_minerals = \
+                np.where(self.pr_modal_mineralogy != 0)[0]
+            print(self.pr_present_minerals)
+            self.pr_minerals = \
+                list(np.array(self.pr_minerals)[self.pr_present_minerals])
+            self.pr_n_minerals = len(self.pr_minerals)
+            self.pr_modal_mineralogy = \
+                self.pr_modal_mineralogy[self.pr_present_minerals]
+            self.pr_csd_means = self.pr_csd_means[self.pr_present_minerals]
+            self.pr_csd_stds = self.pr_csd_stds[self.pr_present_minerals]
+            if self.pr_interfacial_composition:
+                self.pr_interfacial_composition = \
+                    self.pr_interfacial_composition[self.pr_present_minerals][:, self.pr_present_minerals]
 
         # Second group of model parameters
         # ================================
@@ -221,13 +239,14 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         # ---------------------------------------------------------------------
         print("Initializing modal mineralogy...")
         # Assert that modal mineralogy proportions sum up to unity.
-        if not (self.modal_mineralogy >= 0).all():
+        if not (self.pr_modal_mineralogy >= 0).all():
             raise ValueError("Provided modal mineralogy proportions should all"
                              " be positive.")
 
-        if not np.isclose(np.sum(self.modal_mineralogy), 1.0):
+        if not np.isclose(np.sum(self.pr_modal_mineralogy), 1.0):
             if auto_normalize_modal_mineralogy:
-                self.modal_mineralogy = gen.normalize(self.modal_mineralogy)
+                self.pr_modal_mineralogy = \
+                    gen.normalize(self.pr_modal_mineralogy)
             else:
                 raise ValueError("Provided modal mineralogy proportions do not"
                                  " sum to one. \nEither check them manually or"
@@ -237,12 +256,13 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
         # Divide parent rock volume over all mineral classes based on
         # modal mineralogy
-        self.modal_volume = self.parent_rock_volume * self.modal_mineralogy
+        self.pr_modal_volume = \
+            self.pr_initial_volume * self.pr_modal_mineralogy
 
         # ---------------------------------------------------------------------
         print("Initializing csds...")
         # Assert that csd_means does not have any zero values
-        if not all(self.csd_means != 0.0):
+        if not all(self.pr_csd_means != 0.0):
             raise ValueError("Provided CSD means should not be zero.")
         CrystalSizeMixin.__init__(self)
 
@@ -283,25 +303,29 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         else:
             print("Counting interfaces...")
 
-        self.interface_counts_matrix = \
-            gen.count_and_convert_interfaces_to_matrix(self.interface_array,
-                                                       self.n_minerals)
+        self.pr_interface_counts_matrix = \
+            gen.count_and_convert_interfaces_to_matrix(
+                self.pr_crystals,
+                self.pr_n_minerals)
         if timed:
             toc2 = time.perf_counter()
             print(f" Done in{toc2 - tic2: 1.4f} seconds")
 
         # ---------------------------------------------------------------------
         print("Correcting interface arrays for consistency...")
-        self.interface_array, self.interface_counts_matrix = \
+        self.pr_crystals, self.pr_interface_counts_matrix = \
             self.perform_interface_array_correction()
+
+        self.pcg_interface_counts_matrix = \
+            self.pr_interface_counts_matrix.copy()
 
         # ---------------------------------------------------------------------
         print("Initializing crystal size array...", end=" ")
         if timed:
             tic3 = time.perf_counter()
-        self.minerals_N_actual = gen.bin_count(self.interface_array)
+        self.pr_minerals_N_actual = gen.bin_count(self.pr_crystals)
 
-        self.crystal_size_array = self.fill_main_cystal_size_array()
+        self.pr_crystal_sizes = self.fill_main_cystal_size_array()
         if timed:
             toc3 = time.perf_counter()
             print(f" Done in{toc3 - tic3: 1.4f} seconds")
@@ -321,8 +345,8 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
         # The more an interface is located towards the outside of a
         # grain, the more chance it has to be broken.
-        self.interface_location_prob = \
-            create_interface_location_prob(self.interface_array)
+        self.pr_interface_location_prob = \
+            create_interface_location_prob(self.pr_crystals)
 
         # --------------------------------------------------------------
         # Mineral and Interface stengths
@@ -349,13 +373,13 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         self.interface_strengths_prob = \
             gen.get_interface_strengths_prob(
                 self.interface_strengths,
-                self.interface_array)
+                self.pr_crystals)
         # The bigger an interface is, the more chance it has to be
         # broken.
         self.interface_size_prob = \
-            gen.get_interface_size_prob(self.crystal_size_array)
+            gen.get_interface_size_prob(self.pr_crystal_sizes)
 
-        self.interface_constant_prob = \
+        self.pr_interface_constant_prob = \
             self.interface_size_prob / self.interface_strengths_prob
 
         print("Initializing model evolution arrays...")
@@ -371,9 +395,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         print("\n---SedGen model initialization finished succesfully---")
 
     def __repr__(self):
-        output = f"SedGen({self.minerals}, {self.parent_rock_volume}, " \
-                 f"{self.modal_mineralogy}, {self.csd_means}, " \
-                 f"{self.csd_stds}, {self.interfacial_composition}, " \
+        output = f"SedGen({self.pr_minerals}, {self.pr_initial_volume}, " \
+                 f"{self.pr_modal_mineralogy}, {self.pr_csd_means}, " \
+                 f"{self.pr_csd_stds}, {self.pr_interfacial_composition}, " \
                  f"{self.learning_rate}, {self.mineral_strengths}, " \
                  f"{self.chem_weath_rates}"
         return output
@@ -473,12 +497,12 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         # Incorporate option to have a property specified per timestep.
 
         if len(p) == 1:
-            return np.array([p] * self.n_minerals)
-        elif len(p) == self.n_minerals:
+            return np.array([p] * self.pr_n_minerals)
+        elif len(p) == self.pr_n_minerals:
             return np.array(p)
         else:
             raise ValueError("property should be of length 1 or same"
-                             f"length ({self.present_minerals.size}) as"
+                             f"length ({self.pr_present_minerals.size}) as"
                              "present minerals")
 
     def calculate_actual_volumes(self):
@@ -486,25 +510,26 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         the crystal size array per mineral"""
         actual_volumes = []
 
-        for m in range(self.n_minerals):
+        for m in range(self.pr_n_minerals):
             # Get cystal size (binned) for mineral
-            crystal_sizes = self.crystal_size_array[self.interface_array == m]
+            crystal_sizes = \
+                self.pr_crystal_sizes[self.pr_crystals == m]
             # Convert bin labels to bin medians
             crystal_sizes_array = self.size_bins_medians[crystal_sizes]
             # Calculate sum of volume of crystal sizes and store result
             actual_volumes.append(
                 np.sum(
                     gen.calculate_volume_sphere(
-                        crystal_sizes_array)) / self.parent_rock_volume)
+                        crystal_sizes_array)) / self.pr_initial_volume)
 
         return actual_volumes
 
     def check_properties(self):
         # Check that number of crystals per mineral in interface dstack
         # array equals the same number in minerals_N
-        assert all([np.sum(self.interface_array == x)
-                    for x in range(self.n_minerals)]
-                   - self.minerals_N == [0] * self.n_minerals), \
+        assert all([np.sum(self.pr_crystals == x)
+                    for x in range(self.pr_n_minerals)]
+                   - self.pr_minerals_N == [0] * self.pr_n_minerals), \
                    "N is not the same in interface_array and minerals_N"
 
         return "Number of crystals (N) is the same in interface_array and"
@@ -541,51 +566,46 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             # parent rock material
             if self.scenario_input[step] > 0.0:
                 # required_new_material_volume = \
-                #     self.parent_rock_volume * self.scenario_input[step]
+                #     self.pr_initial_volume * self.scenario_input[step]
 
                 n_crystals_new_material = \
-                    int(self.N_crystals * self.scenario_input[step])
+                    int(self.pr_N_crystals * self.scenario_input[step])
 
-                crystal_loc_selector = np.random.RandomState(step)
+                if self.fixed_random_seeds:
+                    crystal_loc_selector = np.random.default_rng(step)
+                else:
+                    crystal_loc_selector = np.random.default_rng()
                 random_crystal_start = \
-                    crystal_loc_selector.randint(
-                        0, self.N_crystals - n_crystals_new_material)
+                    crystal_loc_selector.integers(
+                        0, self.pr_N_crystals - n_crystals_new_material)
 
-                new_material_pcgs = self.interface_array[
+                new_material_pcgs = self.pr_crystals[
                     random_crystal_start:
                     random_crystal_start+n_crystals_new_material]
-                new_material_crystal_sizes = self.crystal_size_array[
+                new_material_crystal_sizes = self.pr_crystal_sizes[
                     random_crystal_start:
                     random_crystal_start+n_crystals_new_material]
-                new_material_interface_prob = self.interface_constant_prob[
-                    random_crystal_start:
-                    random_crystal_start+n_crystals_new_material-1]
+                new_material_interface_prob = \
+                    self.pr_interface_constant_prob[
+                        random_crystal_start:
+                        random_crystal_start+n_crystals_new_material-1]
                 new_material_chem_weath_array = \
                     np.array([0] * n_crystals_new_material, dtype='uint8')
 
-                # Check output of new material input
-                # print(new_material_pcgs.shape, new_material_crystal_sizes.shape, new_material_interface_prob.shape, new_material_chem_weath_array.shape)
-
                 actual_new_material_volume = \
                     np.sum(self.volume_bins_medians[
-                        self.crystal_size_array_new[0][
+                        self.pcg_crystal_sizes[0][
                             :n_crystals_new_material]])
 
                 self.new_material_volumes[step] = actual_new_material_volume
 
                 # Add new material to arrays of model
-                self.pcgs_new.append(new_material_pcgs)
-                self.crystal_size_array_new.append(new_material_crystal_sizes)
-                self.interface_constant_prob_new.append(
+                self.pcg_crystals.append(new_material_pcgs)
+                self.pcg_crystal_sizes.append(new_material_crystal_sizes)
+                self.pcg_interface_constant_prob.append(
                     new_material_interface_prob)
-                self.pcg_chem_weath_array_new.append(
+                self.pcg_chem_weath_states.append(
                     new_material_chem_weath_array)
-
-                # Check output of new material input
-                # print([arr.shape for arr in self.pcgs_new])
-                # print([arr.shape for arr in self.crystal_size_array_new])
-                # print([arr.shape for arr in self.interface_constant_prob_new])
-                # print([arr.shape for arr in self.pcg_chem_weath_array_new])
 
             # Perform weathering operations
             for operation in operations:
@@ -613,9 +633,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
                 elif operation == "inter_cb":
                     # inter-crystal breakage
-                    self.pcgs_new, self.crystal_size_array_new,\
-                        self.interface_constant_prob_new, \
-                        self.pcg_chem_weath_array_new, self.mcg = \
+                    self.pcg_crystals, self.pcg_crystal_sizes,\
+                        self.pcg_interface_constant_prob, \
+                        self.pcg_chem_weath_states, self.mcg = \
                         self.inter_crystal_breakage(step)
                     if display_mcg_sums:
                         print("mcg sum after inter_cb",
@@ -624,7 +644,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                         toc_inter_cb = time.perf_counter()
 
                     # If no pcgs are remaining anymore, stop the model
-                    if not self.pcgs_new:
+                    if not self.pcg_crystals:
                         print(f"After {step} steps all pcgs have been broken"
                               " down to mcg")
                         return self
@@ -656,12 +676,12 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                         toc_chem_pcg = time.perf_counter()
                         continue
                     # chemical weathering of pcg
-                    self.pcgs_new, \
-                        self.crystal_size_array_new, \
-                        self.interface_constant_prob_new, \
-                        self.pcg_chem_weath_array_new, \
+                    self.pcg_crystals, \
+                        self.pcg_crystal_sizes, \
+                        self.pcg_interface_constant_prob, \
+                        self.pcg_chem_weath_states, \
                         self.pcg_chem_residue, \
-                        self.interface_counts_matrix = \
+                        self.pcg_interface_counts_matrix = \
                         self.chemical_weathering_pcg()
                     self.pcg_chem_residue_additions[step] = \
                         self.pcg_chem_residue
@@ -684,11 +704,11 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                 np.sum(self.residue_count) - \
                 np.sum(self.residue_count_additions)
 
-            self.pcg_additions[step] = len(self.pcgs_new)
+            self.pcg_additions[step] = len(self.pcg_crystals)
             self.mcg_additions[step] = np.sum(self.mcg)  # - np.sum(mcg_additions)
 
-            self.pcg_comp_evolution.append(self.pcgs_new)
-            self.pcg_size_evolution.append(self.crystal_size_array_new)
+            self.pcg_comp_evolution.append(self.pcg_crystals)
+            self.pcg_size_evolution.append(self.pcg_crystal_sizes)
 
             self.pcg_chem_residue_additions[step] = self.pcg_chem_residue
             self.mcg_chem_residue_additions[step] = self.mcg_chem_residue
@@ -717,7 +737,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                       np.sum(self.mcg), "mcg")
 
                 print("vol_pcg_total:", vol_pcg, "over",
-                      len(self.pcgs_new), "pcg")
+                      len(self.pcg_crystals), "pcg")
 
                 print("mcg_intra_cb_residue_total:",
                       np.sum(self.residue_additions))
@@ -730,7 +750,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                 print(f"new mass balance after step {step}: {mass_balance}\n")
 
             # If no pcgs are remaining anymore, stop the model
-            if not self.pcgs_new:  # Faster to check if pcgs_new has any items
+            if not self.pcg_crystals:  # Faster to check if pcgs_new has any items
                 print(f"After {step} steps all pcg have been broken down to"
                       "mcg")
                 break
@@ -758,9 +778,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
     def calculate_vol_pcg(self):
 
-        pcg_concat = np.concatenate(self.pcgs_new)
-        csize_concat = np.concatenate(self.crystal_size_array_new)
-        chem_concat = np.concatenate(self.pcg_chem_weath_array_new)
+        pcg_concat = np.concatenate(self.pcg_crystals)
+        csize_concat = np.concatenate(self.pcg_crystal_sizes)
+        chem_concat = np.concatenate(self.pcg_chem_weath_states)
 
         vol_pcg = np.sum(self.volume_bins_medians_matrix[chem_concat,
                                                          pcg_concat,
@@ -793,27 +813,30 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             Newly formed mono-crystalline grains during inter-crystal
             breakage
         """
-        pcgs_old = self.pcgs_new
+        pcgs_old = self.pcg_crystals
         pcgs_new = []
         pcgs_new_append = pcgs_new.append
 
-        interface_constant_prob_old = self.interface_constant_prob_new
+        interface_constant_prob_old = self.pcg_interface_constant_prob
         interface_constant_prob_new = []
         interface_constant_prob_new_append = interface_constant_prob_new.append
 
-        crystal_size_array_old = self.crystal_size_array_new
+        crystal_size_array_old = self.pcg_crystal_sizes
         crystal_size_array_new = []
         crystal_size_array_new_append = crystal_size_array_new.append
 
-        pcg_chem_weath_array_old = self.pcg_chem_weath_array_new
+        pcg_chem_weath_array_old = self.pcg_chem_weath_states
         pcg_chem_weath_array_new = []
         pcg_chem_weath_array_new_append = pcg_chem_weath_array_new.append
 
-        c_creator = np.random.RandomState(step)
+        if self.fixed_random_seeds:
+            c_creator = np.random.default_rng(step)
+        else:
+            c_creator = np.random.default_rng()
         c = c_creator.random(size=self.pcg_additions[step-1] + 1)
 
         mcg_temp = [[[]
-                    for m in range(self.n_minerals)]
+                    for m in range(self.pr_n_minerals)]
                     for n in range(self.n_steps)]
     #         interface_indices = List()
 
@@ -882,12 +905,12 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                 # Remove interface from interface_counts_matrix
                 # Faster to work with matrix than with list and post-loop
                 # operations as with the mcg counting
-                self.interface_counts_matrix[pcg[interface-1], pcg[interface]] -= 1
+                self.pcg_interface_counts_matrix[pcg[interface-1], pcg[interface]] -= 1
                 # interface_indices.append((pcg[interface-1], pcg[interface]))
 
         # Add counts from mcg_temp to mcg
         mcg_temp_matrix = np.zeros((self.n_steps,
-                                    self.n_minerals,
+                                    self.pr_n_minerals,
                                     self.n_bins),
                                    dtype=np.uint64)
         for n, outer_list in enumerate(mcg_temp):
@@ -908,9 +931,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
     def intra_crystal_breakage_binned(self, alternator, start_bin_corr=5):
         mcg_new = np.zeros_like(self.mcg)
         residue_new = \
-            np.zeros((self.n_steps, self.n_minerals), dtype=np.float64)
+            np.zeros((self.n_steps, self.pr_n_minerals), dtype=np.float64)
         residue_count_new = \
-            np.zeros((self.n_steps, self.n_minerals), dtype=np.uint32)
+            np.zeros((self.n_steps, self.pr_n_minerals), dtype=np.uint32)
 
         for n in range(self.n_steps):
             for m, m_old in enumerate(self.mcg[n]):
@@ -1044,9 +1067,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
         # Redisue
         # 1. Residue from mcg being in a negative grain size class
-        residue_1 = np.zeros(self.n_minerals, dtype=np.float64)
+        residue_1 = np.zeros(self.pr_n_minerals, dtype=np.float64)
         for n in range(1, self.n_steps):
-            for m in range(self.n_minerals):
+            for m in range(self.pr_n_minerals):
                 threshold = self.negative_volume_thresholds[n, m]
                 residue_1[m] += \
                     np.sum(mcg_new[n, m, :threshold] *
@@ -1084,14 +1107,14 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         pcg will be less, if even, affected by chemical weathering than
         those on the outside of the pcg"""
 
-        residue_per_mineral = np.zeros(self.n_minerals, dtype=np.float64)
+        residue_per_mineral = np.zeros(self.pr_n_minerals, dtype=np.float64)
 
-        pcg_lengths = np.array([len(pcg) for pcg in self.pcgs_new],
+        pcg_lengths = np.array([len(pcg) for pcg in self.pcg_crystals],
                                dtype=np.uint32)
 
-        pcg_concat = np.concatenate(self.pcgs_new)
-        csize_concat = np.concatenate(self.crystal_size_array_new)
-        chem_concat_old = np.concatenate(self.pcg_chem_weath_array_new)
+        pcg_concat = np.concatenate(self.pcg_crystals)
+        csize_concat = np.concatenate(self.pcg_crystal_sizes)
+        chem_concat_old = np.concatenate(self.pcg_chem_weath_states)
 
         chem_concat = chem_concat_old + 1
 
@@ -1146,11 +1169,11 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         pcg_concat_for_interfaces = \
             np.insert(pcg_remaining,
                       pcg_lengths_cumul[:-1].astype(np.int64),
-                      self.n_minerals)
+                      self.pr_n_minerals)
 
         interface_counts_matrix_new = \
             gen.count_and_convert_interfaces_to_matrix(
-                pcg_concat_for_interfaces, self.n_minerals)
+                pcg_concat_for_interfaces, self.pr_n_minerals)
 
         # Interface probability calculations
         csize_concat_for_interfaces = \
@@ -1167,7 +1190,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
         interface_strength_prob_concat = \
             gen.get_interface_strengths_prob(
-                gen.expand_array(self.interface_proportions_normalized),
+                gen.expand_array(self.pr_interface_proportions_normalized),
                 pcg_concat_for_interfaces)
         interface_strength_prob_concat = \
             interface_strength_prob_concat[interface_strength_prob_concat > 0]
@@ -1193,7 +1216,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         residue_1 = \
             gen.weighted_bin_count(pcg_dissolved,
                                    volumes_old_selected,
-                                   self.n_minerals)
+                                   self.pr_n_minerals)
 
         # 2. Residue from material being weathered
         dissolved_volume_selected = \
@@ -1203,7 +1226,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         residue_2 = \
             gen.weighted_bin_count(pcg_remaining,
                                    dissolved_volume_selected,
-                                   self.n_minerals)
+                                   self.pr_n_minerals)
 
         # Add residue together per mineral
         residue_per_mineral = residue_1 + residue_2
@@ -1252,9 +1275,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             Volumes of crystals forming part of poly-crystalline grains
         """
         try:
-            pcg_array = np.concatenate(self.pcgs_new)
-            csize_array = np.concatenate(self.crystal_size_array_new)
-            chem_state_array = np.concatenate(self.pcg_chem_weath_array_new)
+            pcg_array = np.concatenate(self.pcg_crystals)
+            csize_array = np.concatenate(self.pcg_crystal_sizes)
+            chem_state_array = np.concatenate(self.pcg_chem_weath_states)
         except ValueError:
             pass
 
@@ -1285,7 +1308,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             poly-crystalline grains
         """
         try:
-            pcg_array = np.concatenate(self.pcgs_new)
+            pcg_array = np.concatenate(self.pcg_crystals)
         except ValueError:
             pass
         crystals_count = np.bincount(pcg_array)
