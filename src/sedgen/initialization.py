@@ -46,9 +46,9 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
     Variables that have a prefix of one of the below belong to a certain
     group, otherwise the variable can be considered to belong directly
     to the model itself:
-        - pr  : parent rock
-        - pcg : poly-crystalline grain
-        - mcg : mono-crystalline grain
+        - pr_  : parent rock
+        - pcg_ : poly-crystalline grain
+        - mcg_ : mono-crystalline grain
 
     Parameters:
     -----------
@@ -86,7 +86,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
     intra_cb_p : list(float) (optional)
         List of probabilities [0, 1] to specify how many of
         mono-crystalline grains per size bin will be effected by
-        intra-crystal breakage every timestep; defaults to [0.5] to use
+        intra-crystal breakage every step; defaults to [0.5] to use
         0.5 for all present mineral classes
         Multiplied with (1 - normalize(mineral_strengths)) these
         proportions will dictate the balance in intra-crystal breakage
@@ -109,12 +109,14 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         breakage. Interfaces towards the outside of an pcg are more
         likely to break than those on the inside; defaults to True.
     enable_multi_pcg_breakage : bool (optional)
+        Not activated.
         If True, during inter-crystal breakage a pcg may break in more
         than two new pcg/mcg grains. This option might speed up the
         model. By activating all interfaces weaker than the selected
         interfaces, this behavior might be accomplished; defaults to
         False.
     enable_pcg_selection : bool (optional)
+        Not activated.
         If True, a selection of pcgs is performed to determine which
         pcgs will be affected by inter-crystal breakage during one
         iteration of the weathering procedure. Larger volume pcgs will
@@ -494,7 +496,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         needed"""
 
         # TODO:
-        # Incorporate option to have a property specified per timestep.
+        # Incorporate option to have a property specified per step.
 
         if len(p) == 1:
             return np.array([p] * self.pr_n_minerals)
@@ -542,22 +544,22 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                                "chem_pcg"],
                    display_mass_balance=False,
                    display_mcg_sums=False,
-                   timesteps=None,
+                   steps=None,
                    timed=False,
                    inplace=False):
 
         # Whether to work on a copy of the instance or work 'inplace'
         self = self if inplace else copy.copy(self)
 
-        if not timesteps:
-            timesteps = self.n_steps
+        if not steps:
+            steps = self.n_steps
 
         mcg_broken = np.zeros_like(self.mcg)
         if timed:
             tac = time.perf_counter()
         # Start model
-        for step in range(timesteps):
-            # What timestep we're at
+        for step in range(steps):
+            # What step we're at
             if timed:
                 tic = time.perf_counter()
             print(f"{step+1}/{self.n_steps}", end="\r", flush=True)
@@ -600,6 +602,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                 self.new_material_volumes[step] = actual_new_material_volume
 
                 # Add new material to arrays of model
+                # print(len(new_material_pcgs), n_crystals_new_material)
                 self.pcg_crystals.append(new_material_pcgs)
                 self.pcg_crystal_sizes.append(new_material_crystal_sizes)
                 self.pcg_interface_constant_prob.append(
@@ -610,7 +613,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             # Perform weathering operations
             for operation in operations:
                 if operation == "intra_cb":
-                    # TODO: Insert check on timestep or n_mcg to
+                    # TODO: Insert check on step or n_mcg to
                     # perform intra_cb_breakage per mineral and per bin
                     # or in one operation for all bins and minerals.
 
@@ -670,7 +673,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
                 elif operation == "chem_pcg":
                     # Don't perform chemical weathering of pcg in first
-                    # timestep. Otherwise n_steps+1 bin arrays need
+                    # step. Otherwise n_steps+1 bin arrays need
                     # to be initialized.
                     if step == 0:
                         toc_chem_pcg = time.perf_counter()
@@ -707,13 +710,15 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             self.pcg_additions[step] = len(self.pcg_crystals)
             self.mcg_additions[step] = np.sum(self.mcg)  # - np.sum(mcg_additions)
 
-            self.pcg_comp_evolution.append(self.pcg_crystals)
-            self.pcg_size_evolution.append(self.pcg_crystal_sizes)
+            self.pcg_crystals_evolution.append(self.pcg_crystals)
+            self.pcg_crystal_sizes_evolution.append(self.pcg_crystal_sizes)
+            self.pcg_chem_weath_states_evolution.append(
+                self.pcg_chem_weath_states)
 
             self.pcg_chem_residue_additions[step] = self.pcg_chem_residue
             self.mcg_chem_residue_additions[step] = self.mcg_chem_residue
 
-            self.mcg_evolution[step] = np.sum(self.mcg, axis=0)
+            self.mcg_evolution[step] = self.mcg
 
             # Mass balance check
             vol_mcg = np.sum([self.volume_bins_medians_matrix * self.mcg])
@@ -795,7 +800,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
         Parameters:
         -----------
         step : int
-            ith iteration of the model (timestep number)
+            ith iteration of the model (model step number)
 
         Returns:
         --------

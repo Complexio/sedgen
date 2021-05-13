@@ -10,11 +10,13 @@ __author__ = "Bram Paredis"
 __copyright__ = "Bram Paredis"
 __license__ = "mit"
 
+
 @pytest.fixture
 def fixture_crystal_diameters():
     crystal_diameters = np.array([0.2, 20, 0.05])
 
     yield crystal_diameters
+
 
 @pytest.fixture
 def fixture_crystal_volumes():
@@ -23,10 +25,12 @@ def fixture_crystal_volumes():
 
     yield crystal_volumes
 
+
 @pytest.fixture
 def fixture_modal_mineralogy():
     modal_mineralogy = np.array([0.28, 0.35, 0.24, 0.02, 0.01, 0.03])
     yield modal_mineralogy
+
 
 @pytest.fixture
 def fixture_zero_array():

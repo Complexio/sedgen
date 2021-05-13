@@ -45,6 +45,6 @@ class TestGetInterfaceLabels(object):
 
     def test_correct_number_of_labels(self, fixture_dataset):
         actual = len(fixture_dataset.get_interface_labels())
-        expected = np.sum(np.arange(fixture_dataset.n_minerals+1))
+        expected = np.sum(np.arange(fixture_dataset.pr_n_minerals+1))
 
         assert actual == pytest.approx(expected)

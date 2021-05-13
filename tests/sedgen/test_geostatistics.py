@@ -5,9 +5,8 @@ import numpy as np
 import pandas as pd
 
 import sedgen
-print(sedgen.__path__)
-
 import sedgen.geostatistics as geostat
+print(sedgen.__path__)
 
 __author__ = "Bram Paredis"
 __copyright__ = "Bram Paredis"

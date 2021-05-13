@@ -34,11 +34,12 @@ class ModelEvolutionMixin:
         self.mcg_chem_residue_additions = \
             np.zeros((self.n_steps, self.pr_n_minerals), dtype=np.float64)
 
-        self.pcg_comp_evolution = []
-        self.pcg_size_evolution = []
+        self.pcg_crystals_evolution = []
+        self.pcg_crystal_sizes_evolution = []
+        self.pcg_chem_weath_states_evolution = []
 
         self.mcg_evolution = \
-            np.zeros((self.n_steps, self.pr_n_minerals, self.n_bins),
+            np.zeros((self.n_steps, self.n_steps, self.pr_n_minerals, self.n_bins),
                      dtype=np.uint64)
 
         self.vol_mcg_evolution = np.zeros(self.n_steps, dtype=np.float64)
