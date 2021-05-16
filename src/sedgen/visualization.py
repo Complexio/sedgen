@@ -101,7 +101,7 @@ class SedGenEvolution():
 
         for n, step in self.steps_to_run.items():
             # total_crystals = 0
-            for m in range(6):
+            for m in range(self.n_minerals):
                 print(step, m, end="\r", flush=True)
 
                 pcg_crystal_sizes_filtered_grouped_total = np.zeros(1500)
@@ -142,7 +142,7 @@ class SedGenEvolution():
                             for x in self.whole_phi_classes[:-1]])
 
                 except IndexError:
-                    print(f"All {n} steps accounted for.")
+                    print(f"All {n} requested steps accounted for.")
                     return pcg_volumes_per_phi
 
                 pcg_volumes_per_phi[n, m] = absolute_volumes_grouped
