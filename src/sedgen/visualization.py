@@ -236,7 +236,8 @@ class SedGenEvolution():
         return T_norm
 
     def QFR_ternary_plot(self, selected_phi_classes=None,
-                         save_filename=None):
+                         save_filename=None,
+                         save_path="_FIGURES/ternary_diagrams"):
         """Ternary diagram plot of mcg's and pcg's modal mineralogy with
         trajectory along the model's steps.
         A=Y=mcg_Q, B=Z=mcg_PK, C=X=pcg_QPKBOA.
@@ -250,6 +251,9 @@ class SedGenEvolution():
         save_filename : str (optional)
             Name to use for saving figure; defaults to None so that no
             figure is saved.
+        save_path : str (optional)
+            Path of the folder where the plot should be saved, defaults
+            to _FIGURES/grain_size_plots.
 
         """
         # Calculate data
@@ -289,7 +293,8 @@ class SedGenEvolution():
         tax.show()
 
     def QFOth_ternary_plot(self, selected_phi_classes=None,
-                           save_filename=None):
+                           save_filename=None,
+                           save_path="_FIGURES/ternary_diagrams"):
         """Ternary diagram plot of pcg's modal mineralogy with trajectory
         along the model's steps. A=pcg_Q, B=pcg_PK, C=pcg_BOA.
         Data has been grouped by whole phi grain size classes.
@@ -302,6 +307,9 @@ class SedGenEvolution():
         save_filename : str (optional)
             Name to use for saving figure; defaults to None so that no
             figure is saved.
+        save_path : str (optional)
+            Path of the folder where the plot should be saved, defaults
+            to _FIGURES/grain_size_plots.
 
         """
         # Calculate data
@@ -341,7 +349,8 @@ class SedGenEvolution():
         tax.show()
 
     def grain_size_barplot(self, step_index, grains='bulk', volume_limit=8e7,
-                           save_filename=None):
+                           save_filename=None,
+                           save_path="_FIGURES/grain_size_plots"):
         """Bar plot of the bulk grain size, meaning grain size in both mcg
         and pcg combined.
 
@@ -357,6 +366,12 @@ class SedGenEvolution():
             Upper limit for volume value of y-axis. This number can be
             used to set the same y-axis upper limit for plots of
             different model steps.
+        save_filename : str (optional)
+            Name to use for saving figure; defaults to None so that no
+            figure is saved.
+        save_path : str (optional)
+            Path of the folder where the plot should be saved, defaults
+            to _FIGURES/grain_size_plots.
 
         """
         if grains == 'bulk':
@@ -416,7 +431,7 @@ class SedGenEvolution():
         plt.legend(fontsize='small')
         plt.tight_layout()
         if save_filename:
-            plt.savefig(f"_FIGURES/grain_size_plots/{grains}_grain_size_plot_{save_filename}.pdf")
+            plt.savefig(f"{save_path}/{grains}_grain_size_plot_{save_filename}.pdf")
         plt.show()
 
 
