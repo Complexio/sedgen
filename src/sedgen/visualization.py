@@ -289,7 +289,7 @@ class SedGenEvolution():
         plt.axis('off')
         # plt.tight_layout()
         if save_filename:
-            tax.savefig(f"_FIGURES/ternary_diagrams/QFR_ternary_plot_{save_filename}.pdf")
+            tax.savefig(f"{save_path}/QFR_ternary_plot_{save_filename}.pdf")
         tax.show()
 
     def QFOth_ternary_plot(self, selected_phi_classes=None,
@@ -345,7 +345,7 @@ class SedGenEvolution():
         plt.axis('off')
         # plt.tight_layout()
         if save_filename:
-            tax.savefig(f"_FIGURES/ternary_diagrams/QFO_ternary_plot_{save_filename}.pdf")
+            tax.savefig(f"{save_path}/QFO_ternary_plot_{save_filename}.pdf")
         tax.show()
 
     def grain_size_barplot(self, step_index, grains='bulk', volume_limit=8e7,
