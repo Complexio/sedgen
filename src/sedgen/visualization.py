@@ -90,6 +90,9 @@ class SedGenEvolution():
             self.mcg_volumes_per_unit_phi = \
                 np.moveaxis(self.mcg_volumes_per_unit_phi,
                             [0, 1, 2], [2, 0, 1])
+        else:
+            self.pcg_volumes_per_unit_phi = self.pcg_volumes_per_phi.copy()
+            self.mcg_volumes_per_unit_phi = self.mcg_volumes_per_phi.copy()
 
         print("Done.")
 
