@@ -60,7 +60,7 @@ class MineralOccurenceMixin:
             crystals_total += crystals_requested
             crystals_to_add = \
                 np.exp(self.pr_csds[m].rvs(size=crystals_requested,
-                                        random_state=rs))
+                                           random_state=rs))
 
             crystals_append(gen.calculate_volume_sphere(crystals_to_add))
             total_volume_mineral += np.sum(crystals[rs])
@@ -141,7 +141,8 @@ class InterfaceOccurenceMixin:
     def calculate_interface_proportions_normalized(self):
         interface_proportions_normalized = \
             np.divide(self.pr_interface_proportions,
-                      np.sum(self.pr_interface_proportions, axis=1).reshape(-1, 1)
+                      np.sum(self.pr_interface_proportions,
+                             axis=1).reshape(-1, 1)
                       )
         return interface_proportions_normalized
 
@@ -320,7 +321,7 @@ def create_interface_array(minerals_N, transitions_per_mineral):
 class CrystalSizeMixin:
     def __init__(self):
         self.pr_csds = np.array([self.initialize_csd(m)
-                              for m in range(self.pr_n_minerals)])
+                                for m in range(self.pr_n_minerals)])
 
     def initialize_csd(self, m, trunc_left=1/256, trunc_right=30):
         """Initalizes the truncated lognormal crystal size distribution

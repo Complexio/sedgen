@@ -53,6 +53,8 @@ class SedGenEvolution():
         self.unit_phi_classes = list(range(10, -6, -1))
         self.neg_phi_classes_range = \
             np.arange(-10, 5, self.whole_phi_class_interval/100)
+        self.neg_unit_phi_classes_range = \
+            np.arange(-10, 5, 1)
 
         print(f"Starting calculation of volumes' evolution of model from step "
               f"{self.start_step} to step {self.end_step} with a "
@@ -105,7 +107,7 @@ class SedGenEvolution():
         for n, step in self.steps_to_run.items():
             # total_crystals = 0
             for m in range(self.n_minerals):
-                print(step, m, end="\r", flush=True)
+                print(step, m, end="\r")
 
                 pcg_crystal_sizes_filtered_grouped_total = np.zeros(1500)
 
@@ -352,7 +354,8 @@ class SedGenEvolution():
         tax.show()
 
     def grain_size_barplot(self, step_index, grains='bulk', volume_limit=8e7,
-                           save_filename=None,
+                           plot_relative=False, plot_unit_phi_classes=False,
+                           volume_threshold=1e5, save_filename=None,
                            save_path="_FIGURES/grain_size_plots"):
         """Bar plot of the bulk grain size, meaning grain size in both mcg
         and pcg combined.
@@ -369,6 +372,18 @@ class SedGenEvolution():
             Upper limit for volume value of y-axis. This number can be
             used to set the same y-axis upper limit for plots of
             different model steps.
+        relative_plot : bool (optional)
+            Whether the volumes should be plotted relatively
+            (normalized to 100%) or not; defaults to False.
+        plot_unit_phi_classes : bool (optional)
+            Whether the unit phi classes should be used instead of
+            finer phi classes that may have been defined in the class
+            constructor; defaults to False.
+        volume_threshold : float (optional)
+            Threshold for volume so that the bar is still plotted for a
+            certain grain size class. This behvaior might be helpful
+            when creating plots for comparison to observed sediment
+            data; defaults to 1e5 mm³.
         save_filename : str (optional)
             Name to use for saving figure; defaults to None so that no
             figure is saved.
@@ -377,23 +392,38 @@ class SedGenEvolution():
             to _FIGURES/grain_size_plots.
 
         """
+        if plot_unit_phi_classes:
+            mcg_volumes = self.mcg_volumes_per_unit_phi[step_index]
+            pcg_volumes = self.pcg_volumes_per_unit_phi[step_index]
+
+            grain_sizes = self.neg_unit_phi_classes_range
+        else:
+            mcg_volumes = self.mcg_volumes_per_phi[step_index]
+            pcg_volumes = self.pcg_volumes_per_phi[step_index]
+
+            grain_sizes = self.neg_phi_classes_range
+
         if grains == 'bulk':
-            heights = self.mcg_volumes_per_phi[step_index] + \
-                      self.pcg_volumes_per_phi[step_index]
+            heights = mcg_volumes + pcg_volumes
         elif grains == 'mcg':
-            heights = self.mcg_volumes_per_phi[step_index]
+            heights = mcg_volumes
         elif grains == 'pcg':
-            heights = self.pcg_volumes_per_phi[step_index]
+            heights = pcg_volumes
         else:
             raise ValueError("The grains parameter should be one of 'bulk', "
                              "'mcg' or 'pcg'.")
 
+        if plot_relative:
+            heights[heights < 1e5] = 0
+            with np.errstate(divide='ignore', invalid='ignore'):
+                heights = heights / heights.sum(axis=0) * 100
+
         fig, ax = plt.subplots()
 
         for m in range(self.n_minerals):
-            ax.bar(x=self.neg_phi_classes_range,
+            ax.bar(x=grain_sizes,
                    height=heights[m],
-                   bottom=np.sum(heights[:m], axis=0),
+                   bottom=np.nansum(heights[:m], axis=0),
                    width=0.15,
                    color=sns.color_palette()[m],
                    label=self.minerals[m])
@@ -407,7 +437,6 @@ class SedGenEvolution():
         ax.spines['bottom'].set_color('grey')
 
         ax.set_xlim(-10, 5)
-        ax.set_ylim(0, volume_limit)
 
         ax.spines['bottom'].set_bounds(-10, 5)
         # ax.spines['left'].set_bounds(0, 7e7)
@@ -421,7 +450,14 @@ class SedGenEvolution():
                        labelsize=9)
 
         ax.set_xlabel("Phi-scale", color='grey')
-        ax.set_ylabel("Volume\n(mm³)", rotation=0, labelpad=25, color='grey')
+        if not plot_relative:
+            y_axis_label = "Volume\n(mm³)"
+            ax.set_ylim(0, volume_limit)
+        else:
+            y_axis_label = "Volume\n(%)"
+            ax.set_ylim(0, 105)
+            ax.spines['left'].set_bounds(0, 100)
+        ax.set_ylabel(y_axis_label, rotation=0, labelpad=25, color='grey')
 
         ax.set_xticks(list(range(-10, 6, 2)))
         ax.set_xticklabels(list(range(10, -6, -2)))
@@ -431,23 +467,84 @@ class SedGenEvolution():
 
         sns.despine()
 
-        plt.legend(fontsize='small')
+        plt.legend(fontsize='small', loc=2)
         plt.tight_layout()
         if save_filename:
-            plt.savefig(f"{save_path}/{grains}_grain_size_plot_{save_filename}.pdf")
+            if plot_relative:
+                plt.savefig(f"{save_path}/relative_{grains}_grain_size_plot_{save_filename}.pdf")
+            else:
+                plt.savefig(f"{save_path}/{grains}_grain_size_plot_{save_filename}.pdf")
         plt.show()
 
+    def solids_vs_residue_lineplot(self, save_filename=None,
+                                   save_path="_FIGURES"):
+        """Line plot of the rock material (either parent rock or sediment)
+        versus the residue material as an evolution throughout the model's
+        steps.
 
-def solids_vs_residue_lineplot(model):
-    """Line plot of the rock material (either parent rock or sediment)
-    versus the residue material as an evolution throughout the model's
-    steps.
+        Parameters:
+        -----------
+        save_filename : str (optional)
+            Name to use for saving figure; defaults to None so that no
+            figure is saved.
+        save_path : str (optional)
+            Path of the folder where the plot should be saved, defaults
+            to _FIGURES.
 
-    Parameters:
-    -----------
+        """
 
-    """
-    pass
+        solids_volumes_evolution = \
+            self.mcg_volumes_per_unit_phi.sum(axis=2).sum(axis=1) + \
+            self.pcg_volumes_per_unit_phi.sum(axis=2).sum(axis=1)
+
+        residue_volumes_evolution = self.residue_volumes_evolution.copy()
+
+        # Filter out model steps after which the sedgen model stopped
+        filter_ = solids_volumes_evolution > 0
+        solids_volumes_evolution = solids_volumes_evolution[filter_]
+        residue_volumes_evolution = residue_volumes_evolution[filter_]
+        n_eff_steps = len(solids_volumes_evolution)
+
+        fig, ax = plt.subplots()
+
+        ax.plot(solids_volumes_evolution, label="solids")
+        ax.plot(residue_volumes_evolution, label="residue")
+
+        ax.text(0.05, 0.9, "solids", color=sns.color_palette()[0],
+                transform=ax.transAxes)
+        ax.text(0.05, 0.08, "residue", color=sns.color_palette()[1],
+                transform=ax.transAxes)
+
+        # Set the color of the visible spines
+        ax.spines['left'].set_color('grey')
+        ax.spines['bottom'].set_color('grey')
+
+        ax.spines['bottom'].set_bounds(0, list(self.steps_to_run.keys())[n_eff_steps-1])
+        ax.spines['left'].set_bounds(0, 1e9)
+
+        ax.spines['left'].set_position(('outward', 0))
+
+        # Set general tick parameters
+        ax.tick_params(axis='both',
+                       direction='out',
+                       colors='grey',
+                       labelsize=9)
+
+        ax.set_xlabel("Model step", color='grey')
+        ax.set_ylabel("Volume\n(mm³)", rotation=0, labelpad=25, color='grey')
+
+        ax.set_xticks(list(self.steps_to_run.keys())[:n_eff_steps])
+        ax.set_xticklabels(list(self.steps_to_run.values())[:n_eff_steps])
+
+        # Set facecolor of figure
+        plt.gcf().set_facecolor('white')
+
+        sns.despine()
+
+        plt.tight_layout()
+        if save_filename:
+                plt.savefig(f"{save_path}/solids_vs_residue_plot_{save_filename}.pdf")
+        plt.show()
 
 
 def lineplotpcgmcg(pluton, sedgenmech, name):
