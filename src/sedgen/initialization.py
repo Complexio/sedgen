@@ -546,7 +546,55 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                    display_mcg_sums=False,
                    steps=None,
                    timed=False,
-                   inplace=False):
+                   inplace=False,
+                   pcg_model_stop=True):
+        """
+        Parameters:
+        -----------
+        operations : list (str) (optional)
+            List of weathering operations to apply. Current operations
+            are:
+                - "intra_cb" : intra-crystal breakage
+                - "inter_cb" : inter-crystal breakage
+                - "chem_mcg" : chemical weathering of mcg
+                - "chem_pcg" : chemical weathering of pcg
+            The order in which the operations are within the list has
+            a minimal effect on a model's outcome.
+        display_mass_balance : bool (optional)
+            Whether to print out the mass balance of each model step to
+            verify that the model adheres to it. In practice the mass
+            balance can be viewed as a volume balance here; defaults to
+            False.
+        display_mcg_sums : bool (optional)
+            Whether the sums of absolute mcg present in the model at a
+            given model step should be printed to screen or not;
+            defaults to False.
+        steps : int (optional)
+            If specified, the number should be lower than the total
+            model steps. This way the weathering function can be applied
+            over multiple instances instead of in one go. By default
+            this behaviour is disabled by passing None.
+        timed : bool (optional)
+            Whether timing of the weathering operations should be
+            printed; defaults to False.
+        inplace : bool (optional)
+            Whether to apply weathering changes directly to the model
+            being passed or to a copy of it; defaults to False.
+        pcg_model_stop : bool (optional)
+            Whether to step the model when all pcg have been weathered
+            to mcg; defaults to True. This can act as a safety when
+            a model is run for the first time and a too high number of
+            model steps had been chosen which would result in possibly
+            unwanted very longruntimes.
+
+        Returns:
+        --------
+        Weathered SedGen object
+
+        """
+        # Since there are still pcg in the model, functions operating on
+        # them should not be disabled.
+        disable_pcg_update_functions = False
 
         # Whether to work on a copy of the instance or work 'inplace'
         self = self if inplace else copy.copy(self)
@@ -646,11 +694,15 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                     if timed:
                         toc_inter_cb = time.perf_counter()
 
-                    # If no pcgs are remaining anymore, stop the model
+                    # Faster to check if pcgs_new has any items
                     if not self.pcg_crystals:
-                        print(f"After {step} steps all pcgs have been broken"
-                              " down to mcg")
-                        return self
+                        # If no pcgs are remaining anymore, stop the model
+                        if pcg_model_stop:
+                            print(f"After {step} steps all pcg have been broken down "
+                                  "to mcg")
+                            break
+                        else:
+                            disable_pcg_update_functions = True
 
                 # To Do: Provide option for different speeds of chemical
                 # weathering per mineral class. This could be done by
@@ -692,7 +744,7 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
                         toc_chem_pcg = time.perf_counter()
 
                 else:
-                    print(f"Warning: {operation} not recognized as a valid"
+                    print(f"Warning: {operation} not recognized as a valid "
                           f"operation, skipping {operation} and continueing")
                     continue
 
@@ -723,7 +775,10 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
             # Mass balance check
             vol_mcg = np.sum([self.volume_bins_medians_matrix * self.mcg])
 
-            vol_pcg = self.calculate_vol_pcg()
+            if disable_pcg_update_functions:
+                vol_pcg = 0
+            else:
+                vol_pcg = self.calculate_vol_pcg()
 
             vol_residue = \
                 np.sum(self.residue_additions) + \
@@ -754,11 +809,15 @@ class SedGen(Bins, BinsMatricesMixin, McgBreakPatternMixin,
 
                 print(f"new mass balance after step {step}: {mass_balance}\n")
 
-            # If no pcgs are remaining anymore, stop the model
-            if not self.pcg_crystals:  # Faster to check if pcgs_new has any items
-                print(f"After {step} steps all pcg have been broken down to"
-                      "mcg")
-                break
+            # Faster to check if pcgs_new has any items
+            if not self.pcg_crystals:
+                # If no pcgs are remaining anymore, stop the model
+                if pcg_model_stop:
+                    print(f"After {step} steps all pcg have been broken down "
+                          "to mcg")
+                    break
+                else:
+                    disable_pcg_update_functions = True
 
             if timed:
                 if 'intra_cb' in operations:
