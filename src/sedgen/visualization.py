@@ -166,7 +166,7 @@ class SedGenEvolution():
         for n, step in self.steps_to_run.items():
             # total_crystals = 0
 
-            print(step, end="\r", flush=True)
+            print(step, end="\r")
 
             mcg_of_interest = self.model.mcg_evolution[step, :, :, :]
 
@@ -414,7 +414,7 @@ class SedGenEvolution():
                              "'mcg' or 'pcg'.")
 
         if plot_relative:
-            heights[heights < 1e5] = 0
+            heights[heights < volume_threshold] = 0
             with np.errstate(divide='ignore', invalid='ignore'):
                 heights = heights / heights.sum(axis=0) * 100
 
